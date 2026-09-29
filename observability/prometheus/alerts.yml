@@ -21,7 +21,7 @@ groups:
           severity: critical
         annotations:
           summary: "Backend sin respuesta en {{ $labels.instance }}"
-          runbook: "docs/RUNBOOK.md#aplicacion-caida"
+          runbook: "docs/OPERATIONS.md#3-alertas"
 
       # ¿Hay errores HTTP? Consumo rápido del presupuesto de error (>5 % de 5xx durante 5 min)
       - alert: HighErrorRate
@@ -31,7 +31,7 @@ groups:
           severity: critical
         annotations:
           summary: "Más del 5 % de respuestas 5xx en /neo (SLO 99.5 %)"
-          runbook: "docs/RUNBOOK.md#incidente-errores-y-conexiones"
+          runbook: "docs/OPERATIONS.md#5-runbook-del-incidente-simulado"
 
       # ¿La API está lenta? p95 > 500 ms durante 10 min
       - alert: HighLatencyP95
@@ -53,7 +53,7 @@ groups:
           severity: critical
         annotations:
           summary: "El backend no obtiene conexiones de PostgreSQL (BD caída o pool agotado)"
-          runbook: "docs/RUNBOOK.md#base-de-datos-caida"
+          runbook: "docs/OPERATIONS.md#si-postgresql-falla"
 
       # Señal temprana del incidente simulado: pool de conexiones saturado
       - alert: DbPoolSaturation
@@ -63,4 +63,4 @@ groups:
           severity: warning
         annotations:
           summary: "Pool de conexiones por encima del 90 % durante 5 minutos"
-          runbook: "docs/RUNBOOK.md#incidente-errores-y-conexiones"
+          runbook: "docs/OPERATIONS.md#5-runbook-del-incidente-simulado"

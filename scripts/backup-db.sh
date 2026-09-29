@@ -24,7 +24,8 @@ sha256sum "$file" > "$file.sha256" 2>/dev/null || shasum -a 256 "$file" > "$file
 
 echo "Respaldo correcto: $file ($(du -h "$file" | cut -f1))"
 
-# Retención: elimina los respaldos más antiguos
+# Retención: elimina los respaldos más antiguos (nombres generados por este script)
+# shellcheck disable=SC2012
 ls -1t "$backup_dir"/parking-*.dump 2>/dev/null | tail -n +"$((retention + 1))" | while read -r old; do
   rm -f "$old" "$old.sha256"
   echo "Eliminado por retención: $old"

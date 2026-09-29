@@ -127,7 +127,7 @@ resource "aws_cloudwatch_metric_alarm" "api_latency_p95" {
 #          + 10 % de margen. Si se supera, hay fuga de conexiones o réplicas de más.
 resource "aws_cloudwatch_metric_alarm" "db_connections" {
   alarm_name          = "${local.name}-db-connections-high"
-  alarm_description   = "Conexiones a PostgreSQL por encima de lo esperado (tareas x DB_POOL_SIZE). Ver RUNBOOK: incidente"
+  alarm_description   = "Conexiones a PostgreSQL por encima de lo esperado (tareas x DB_POOL_SIZE). Ver docs/OPERATIONS.md (runbook del incidente)"
   namespace           = "AWS/RDS"
   metric_name         = "DatabaseConnections"
   statistic           = "Maximum"

@@ -7,5 +7,5 @@
 - [ ] El pipeline está en verde (CI, Security y Build)
 - [ ] No se agregan secretos, `.env` ni credenciales
 - [ ] Si cambia configuración: se actualizó `.env.example` / `environments/*.tfvars`
-- [ ] Si cambia la operación: se actualizó `docs/RUNBOOK.md`
+- [ ] Si cambia la operación: se actualizó `docs/OPERATIONS.md`
 - [ ] Plan de rollback: volver a desplegar el tag `sha-` anterior

@@ -23,7 +23,7 @@ tests:
               instance: backend:8081
             exp_annotations:
               summary: "Backend sin respuesta en backend:8081"
-              runbook: "docs/RUNBOOK.md#aplicacion-caida"
+              runbook: "docs/OPERATIONS.md#3-alertas"
 
   # 10 % de respuestas 5xx sostenidas -> HighErrorRate
   - interval: 1m
@@ -40,7 +40,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "Más del 5 % de respuestas 5xx en /neo (SLO 99.5 %)"
-              runbook: "docs/RUNBOOK.md#incidente-errores-y-conexiones"
+              runbook: "docs/OPERATIONS.md#5-runbook-del-incidente-simulado"
 
   # Tráfico sano -> sin alerta de errores
   - interval: 1m
