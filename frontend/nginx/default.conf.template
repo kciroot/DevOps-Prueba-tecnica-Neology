@@ -51,6 +51,8 @@ server {
         proxy_connect_timeout 3s;
         proxy_read_timeout    30s;
 
+        # Un solo X-Request-ID en la respuesta, incluso si el backend no responde (502/504)
+        proxy_hide_header X-Request-ID;
         add_header X-Request-ID $request_id always;
         include /etc/nginx/snippets/security-headers.conf;
     }

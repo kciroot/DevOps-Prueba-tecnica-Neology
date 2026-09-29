@@ -38,6 +38,12 @@ public class RequestIdFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RequestIdFilter.class);
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]{8,64}$");
 
+    /** Las sondas de salud y el scraping de métricas no generan log por petición. */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/actuator");
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
@@ -45,8 +51,10 @@ public class RequestIdFilter extends OncePerRequestFilter {
                 request.getHeader(AWS_TRACE_HEADER));
         MDC.put(MDC_KEY, requestId);
         response.setHeader(HEADER, requestId);
+        long start = System.nanoTime();
         try {
             chain.doFilter(request, response);
+            logRequest(request, response.getStatus(), start);
         } catch (IOException | ServletException | RuntimeException exception) {
             // Se registra aquí para que el error no controlado conserve el request_id en el log.
             log.error("Error no controlado en {} {}", request.getMethod(), request.getRequestURI(), exception);
@@ -54,6 +62,22 @@ public class RequestIdFilter extends OncePerRequestFilter {
         } finally {
             MDC.remove(MDC_KEY);
         }
+    }
+
+    /** Una línea por petición (método, ruta, estado, duración) con el mismo request_id que nginx. */
+    private static void logRequest(HttpServletRequest request, int status, long startNanos) {
+        long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+        log.atInfo()
+                .setMessage("{} {} -> {} ({} ms)")
+                .addArgument(request.getMethod())
+                .addArgument(request.getRequestURI())
+                .addArgument(status)
+                .addArgument(durationMs)
+                .addKeyValue("http_method", request.getMethod())
+                .addKeyValue("http_path", request.getRequestURI())
+                .addKeyValue("http_status", status)
+                .addKeyValue("duration_ms", durationMs)
+                .log();
     }
 
     static String resolveRequestId(String requestIdHeader, String awsTraceHeader) {

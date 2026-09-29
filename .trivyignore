@@ -1,0 +1,4 @@
+# Excepciones de Trivy. Cada entrada DEBE tener justificación, responsable y fecha de revisión.
+# Formato: <ID>  # motivo · responsable · revisar antes de AAAA-MM-DD
+#
+# (sin excepciones por ahora)

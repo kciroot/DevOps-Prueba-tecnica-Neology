@@ -1,0 +1,66 @@
+# Reglas de alerta mínimas. Cada una responde a una pregunta operativa concreta.
+# SLO de referencia: 99.5 % de peticiones /neo/** sin error 5xx en 30 días
+# (presupuesto de error = 0.5 %). Ver docs/OBSERVABILITY.md
+groups:
+  - name: parking-slo
+    rules:
+      # SLI: proporción de peticiones exitosas (no 5xx) en la API de negocio
+      - record: sli:api_availability:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_count{uri=~"/neo.*", status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{uri=~"/neo.*"}[5m])), 1e-9)
+          )
+
+      # ¿La aplicación está caída? (Prometheus no puede leer métricas del backend)
+      - alert: BackendDown
+        expr: up{job="parking-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend sin respuesta en {{ $labels.instance }}"
+          runbook: "docs/RUNBOOK.md#aplicacion-caida"
+
+      # ¿Hay errores HTTP? Consumo rápido del presupuesto de error (>5 % de 5xx durante 5 min)
+      - alert: HighErrorRate
+        expr: (1 - sli:api_availability:ratio_rate5m) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Más del 5 % de respuestas 5xx en /neo (SLO 99.5 %)"
+          runbook: "docs/RUNBOOK.md#incidente-errores-y-conexiones"
+
+      # ¿La API está lenta? p95 > 500 ms durante 10 min
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{uri=~"/neo.*"}[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia p95 de la API superior a 500 ms"
+
+      # ¿La base de datos está caída o el pool está agotado? (peticiones que no obtienen conexión)
+      - alert: DatabaseConnectionFailures
+        expr: increase(hikaricp_connections_timeout_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El backend no obtiene conexiones de PostgreSQL (BD caída o pool agotado)"
+          runbook: "docs/RUNBOOK.md#base-de-datos-caida"
+
+      # Señal temprana del incidente simulado: pool de conexiones saturado
+      - alert: DbPoolSaturation
+        expr: max(hikaricp_connections_active / hikaricp_connections_max) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pool de conexiones por encima del 90 % durante 5 minutos"
+          runbook: "docs/RUNBOOK.md#incidente-errores-y-conexiones"

@@ -38,7 +38,7 @@ echo "[2/5] Iniciando backend con H2..."
 backend_pid="$!"
 
 for attempt in {1..90}; do
-  if curl --fail --silent http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
+  if curl --fail --silent http://localhost:8081/actuator/health | grep -q '"status":"UP"'; then
     break
   fi
   if ! kill -0 "$backend_pid" 2>/dev/null; then
@@ -79,7 +79,8 @@ for attempt in {1..90}; do
 done
 
 echo "[4/5] Ejecutando prueba funcional..."
-"$project_dir/scripts/smoke-test.sh"
+BASE_URL=http://localhost:4200 HEALTH_URL=http://localhost:8081/actuator/health \
+  "$project_dir/scripts/smoke-test.sh"
 
 echo "[5/5] Resultado..."
 echo "STACK LOCAL CORRECTO: Spring Boot, H2 y Angular funcionaron de manera integrada."
