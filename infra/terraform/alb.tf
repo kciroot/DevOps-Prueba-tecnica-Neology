@@ -84,6 +84,9 @@ resource "aws_lb_listener" "https" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.certificate_arn
 
+  # HSTS lo agrega el ALB: el navegador no volverá a intentar HTTP en un año
+  routing_http_response_strict_transport_security_header_value = "max-age=31536000; includeSubDomains"
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.frontend.arn

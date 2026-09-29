@@ -27,7 +27,39 @@ resource "aws_db_parameter_group" "main" {
   }
 }
 
-#trivy:ignore:AVD-AWS-0176 Autenticación IAM fuera de alcance: se usa usuario/password gestionado y rotado por RDS.
+# --- Credenciales ---
+# El password se genera como valor EFÍMERO en cada apply y se escribe con atributos write-only
+# en RDS y en Secrets Manager: no queda en el código, ni en el plan, ni en el state.
+# Solo se reescribe cuando cambia db_password_version (rotación deliberada, ver docs/OPERATIONS.md).
+# Se evita la rotación automática de RDS (cada 7 días) porque ECS inyecta el secreto solo al
+# arrancar la tarea: tras rotar, las conexiones nuevas del pool fallarían sin un reinicio.
+locals {
+  db_username   = "parking"
+  db_secret_arn = aws_secretsmanager_secret.db.arn
+}
+
+ephemeral "random_password" "db" {
+  length  = 32
+  special = false # sin caracteres que haya que escapar en JDBC
+}
+
+#trivy:ignore:AVD-AWS-0098 Cifrado con la llave administrada de Secrets Manager (suficiente para este alcance).
+resource "aws_secretsmanager_secret" "db" {
+  name                    = "${local.name}/db-credentials"
+  description             = "Usuario y password de PostgreSQL para el backend"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "db" {
+  secret_id = aws_secretsmanager_secret.db.id
+  secret_string_wo = jsonencode({
+    username = local.db_username
+    password = ephemeral.random_password.db.result
+  })
+  secret_string_wo_version = var.db_password_version
+}
+
+#trivy:ignore:AVD-AWS-0176 Autenticación IAM fuera de alcance: usuario/password en Secrets Manager.
 #trivy:ignore:AVD-AWS-0133 Performance Insights se habilita según el tamaño de instancia de producción.
 resource "aws_db_instance" "main" {
   identifier     = local.name
@@ -35,12 +67,10 @@ resource "aws_db_instance" "main" {
   engine_version = "16"
   instance_class = var.db.instance_class
 
-  db_name  = "parking"
-  username = "parking"
-
-  # RDS genera el password, lo guarda en Secrets Manager y lo rota.
-  # El password NUNCA aparece en el código ni en el state de Terraform.
-  manage_master_user_password = true
+  db_name             = "parking"
+  username            = local.db_username
+  password_wo         = ephemeral.random_password.db.result
+  password_wo_version = var.db_password_version
 
   allocated_storage     = var.db.allocated_storage
   max_allocated_storage = var.db.max_allocated_storage # autoescalado de almacenamiento
@@ -66,9 +96,4 @@ resource "aws_db_instance" "main" {
 
   auto_minor_version_upgrade      = true
   enabled_cloudwatch_logs_exports = ["postgresql"]
-}
-
-locals {
-  # ARN del secreto que RDS crea y rota automáticamente
-  db_secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
 }

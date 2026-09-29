@@ -92,6 +92,14 @@ data "aws_iam_policy_document" "github_deploy" {
     }
   }
 
+  # `terraform plan` refresca aws_secretsmanager_secret_version con GetSecretValue.
+  # Riesgo aceptado y acotado: solo este secreto, solo desde el Environment de GitHub de este ambiente.
+  statement {
+    sid       = "RefreshDbSecretVersion"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.db.arn]
+  }
+
   dynamic "statement" {
     for_each = var.tf_state_bucket == null ? [] : [1]
     content {

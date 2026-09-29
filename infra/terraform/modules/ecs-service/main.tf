@@ -3,7 +3,6 @@
 
 locals {
   container_name = var.name
-  volumes        = { for path in var.writable_paths : replace(trim(path, "/"), "/", "-") => path }
 }
 
 resource "aws_ecs_task_definition" "this" {
@@ -20,14 +19,6 @@ resource "aws_ecs_task_definition" "this" {
     cpu_architecture        = "X86_64" # el pipeline publica imágenes linux/amd64
   }
 
-  # Volúmenes efímeros para las únicas rutas que necesitan escritura
-  dynamic "volume" {
-    for_each = local.volumes
-    content {
-      name = volume.key
-    }
-  }
-
   container_definitions = jsonencode([{
     name      = local.container_name
     image     = var.image
@@ -41,17 +32,13 @@ resource "aws_ecs_task_definition" "this" {
     environment = [for key, value in var.environment : { name = key, value = value }]
     secrets     = [for key, arn in var.secrets : { name = key, valueFrom = arn }]
 
-    # Endurecimiento del contenedor
-    readonlyRootFilesystem = true
-    privileged             = false
+    # Endurecimiento del contenedor: usuario no-root (definido en la imagen), sin privilegios
+    # y sin capabilities de Linux. Solo lectura queda pendiente en Fargate: sus volúmenes
+    # efímeros se montan vacíos y propiedad de root, y la app (UID 10001/101) necesita /tmp.
+    privileged = false
     linuxParameters = {
       capabilities = { drop = ["ALL"] }
     }
-    mountPoints = [for name, path in local.volumes : {
-      sourceVolume  = name
-      containerPath = path
-      readOnly      = false
-    }]
 
     healthCheck = {
       command     = var.health_check_command

@@ -32,7 +32,7 @@ output "db_endpoint" {
 }
 
 output "db_secret_arn" {
-  description = "Secreto con las credenciales de la BD (gestionado y rotado por RDS)"
+  description = "Secreto con usuario y password de la BD (lo lee ECS al iniciar cada tarea)"
   value       = local.db_secret_arn
 }
 

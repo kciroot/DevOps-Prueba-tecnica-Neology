@@ -1,6 +1,6 @@
 # Atajos para los comandos más usados. Cada target es un comando documentado en el README.
 .DEFAULT_GOAL := help
-.PHONY: help env up down logs ps test validate scan scan-images drills backup restore-check observability tf-check
+.PHONY: help env up down logs ps test validate scan scan-images drills backup restore-check observability tf-check tf-plan
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -46,3 +46,9 @@ observability: ## Levanta Prometheus en http://localhost:9090
 
 tf-check: ## Formato, validación y pruebas de Terraform (sin credenciales AWS)
 	cd infra/terraform && terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate && terraform test
+
+tf-plan: ## terraform plan real contra AWS (requiere credenciales; state local; NO aplica nada)
+	cd infra/terraform && printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf \
+	  && terraform init -input=false -reconfigure \
+	  && terraform plan -var-file=environments/dev.tfvars \
+	       -var image_repository=ghcr.io/example/devops-prueba-tecnica-neology -var image_tag=sha-0000000

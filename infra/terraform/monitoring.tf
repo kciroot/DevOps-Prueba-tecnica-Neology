@@ -18,10 +18,15 @@ locals {
   alb_dimension = aws_lb.main.arn_suffix
 }
 
-# ¿Aplicación caída? Tareas del backend que no pasan el health check del ALB
-resource "aws_cloudwatch_metric_alarm" "backend_unhealthy" {
-  alarm_name          = "${local.name}-backend-unhealthy-hosts"
-  alarm_description   = "Hay tareas del backend fallando el health check (readiness). Ver RUNBOOK: aplicacion-caida"
+# ¿Frontend o backend caído? Tareas que no pasan el health check del ALB
+resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
+  for_each = {
+    frontend = aws_lb_target_group.frontend.arn_suffix
+    backend  = aws_lb_target_group.backend.arn_suffix
+  }
+
+  alarm_name          = "${local.name}-${each.key}-unhealthy-hosts"
+  alarm_description   = "Hay tareas de ${each.key} fallando el health check del ALB. Ver docs/OPERATIONS.md"
   namespace           = "AWS/ApplicationELB"
   metric_name         = "UnHealthyHostCount"
   statistic           = "Maximum"
@@ -32,13 +37,15 @@ resource "aws_cloudwatch_metric_alarm" "backend_unhealthy" {
   treat_missing_data  = "breaching"
   dimensions = {
     LoadBalancer = local.alb_dimension
-    TargetGroup  = aws_lb_target_group.backend.arn_suffix
+    TargetGroup  = each.value
   }
   alarm_actions = local.alarm_actions
   ok_actions    = local.alarm_actions
 }
 
-# ¿Errores HTTP? SLI de disponibilidad: % de respuestas 5xx del backend (SLO 99.5 %)
+# ¿Errores HTTP? SLI de disponibilidad de la API (SLO 99.5 %):
+#   errores = 5xx generados por el backend + 5xx generados por el ALB (502/503/504 cuando
+#             el backend está caído o no responde a tiempo; esos NO llegan como Target_5XX)
 resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
   alarm_name          = "${local.name}-api-5xx-rate"
   alarm_description   = "Más del 5 % de respuestas 5xx en la API durante 5 minutos (consumo rápido del presupuesto de error)"
@@ -51,13 +58,13 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
 
   metric_query {
     id          = "error_rate"
-    expression  = "100 * errors / MAX([requests, 1])"
+    expression  = "100 * (target_errors + alb_errors) / MAX([requests, 1])"
     label       = "Porcentaje de 5xx"
     return_data = true
   }
 
   metric_query {
-    id = "errors"
+    id = "target_errors"
     metric {
       namespace   = "AWS/ApplicationELB"
       metric_name = "HTTPCode_Target_5XX_Count"
@@ -67,6 +74,17 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
         LoadBalancer = local.alb_dimension
         TargetGroup  = aws_lb_target_group.backend.arn_suffix
       }
+    }
+  }
+
+  metric_query {
+    id = "alb_errors"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_ELB_5XX_Count"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = local.alb_dimension }
     }
   }
 
@@ -121,20 +139,6 @@ resource "aws_cloudwatch_metric_alarm" "db_connections" {
   alarm_actions       = local.alarm_actions
 }
 
-resource "aws_cloudwatch_metric_alarm" "db_cpu" {
-  alarm_name          = "${local.name}-db-cpu-high"
-  alarm_description   = "CPU de RDS > 80 % durante 10 minutos"
-  namespace           = "AWS/RDS"
-  metric_name         = "CPUUtilization"
-  statistic           = "Average"
-  period              = 60
-  evaluation_periods  = 10
-  threshold           = 80
-  comparison_operator = "GreaterThanThreshold"
-  dimensions          = { DBInstanceIdentifier = aws_db_instance.main.identifier }
-  alarm_actions       = local.alarm_actions
-}
-
 resource "aws_cloudwatch_metric_alarm" "db_storage" {
   alarm_name          = "${local.name}-db-free-storage-low"
   alarm_description   = "Menos de 2 GB libres en RDS"
@@ -147,18 +151,4 @@ resource "aws_cloudwatch_metric_alarm" "db_storage" {
   comparison_operator = "LessThanThreshold"
   dimensions          = { DBInstanceIdentifier = aws_db_instance.main.identifier }
   alarm_actions       = local.alarm_actions
-}
-
-# Errores de aplicación en logs (líneas con nivel ERROR en el JSON del backend)
-resource "aws_cloudwatch_log_metric_filter" "backend_errors" {
-  name           = "${local.name}-backend-errors"
-  log_group_name = aws_cloudwatch_log_group.app["backend"].name
-  pattern        = "ERROR"
-
-  metric_transformation {
-    name          = "BackendErrorLogs"
-    namespace     = "Parking/${var.environment}"
-    value         = "1"
-    default_value = "0"
-  }
 }

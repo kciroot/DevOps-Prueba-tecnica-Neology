@@ -1,10 +1,16 @@
 terraform {
-  required_version = ">= 1.10"
+  # >= 1.11: atributos write-only (el password de la BD nunca se guarda en el state)
+  required_version = ">= 1.11"
 
+  # Versiones exactas: `terraform init` descarga siempre lo mismo (Dependabot las actualiza)
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.66"
+      version = "6.66.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.9.1"
     }
   }
 

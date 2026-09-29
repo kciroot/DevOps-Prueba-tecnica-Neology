@@ -56,12 +56,6 @@ variable "health_check_command" {
   type        = list(string)
 }
 
-variable "writable_paths" {
-  description = "Rutas escribibles (volúmenes efímeros); el resto del sistema de archivos es de solo lectura"
-  type        = list(string)
-  default     = ["/tmp"]
-}
-
 variable "subnet_ids" {
   description = "Subredes privadas donde corren las tareas"
   type        = list(string)

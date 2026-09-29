@@ -33,10 +33,12 @@ mock_provider "aws" {
   }
   mock_resource "aws_db_instance" {
     defaults = {
-      address            = "parking-dev.abc.us-east-1.rds.amazonaws.com"
-      port               = 5432
-      master_user_secret = [{ secret_arn = "arn:aws:secretsmanager:us-east-1:111111111111:secret:rds-db-credentials", kms_key_id = "", secret_status = "active" }]
+      address = "parking-dev.abc.us-east-1.rds.amazonaws.com"
+      port    = 5432
     }
+  }
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = { arn = "arn:aws:secretsmanager:us-east-1:111111111111:secret:parking-dev/db-credentials" }
   }
 }
 
@@ -68,8 +70,13 @@ run "dev_es_seguro_por_defecto" {
   }
 
   assert {
-    condition     = aws_db_instance.main.storage_encrypted && aws_db_instance.main.manage_master_user_password
-    error_message = "RDS debe cifrar el almacenamiento y gestionar el password en Secrets Manager"
+    condition     = aws_db_instance.main.storage_encrypted
+    error_message = "RDS debe cifrar el almacenamiento"
+  }
+
+  assert {
+    condition     = aws_db_instance.main.password == null && aws_db_instance.main.password_wo_version == 1
+    error_message = "El password de RDS solo se escribe como write-only (nunca en el state)"
   }
 
   assert {
@@ -83,8 +90,8 @@ run "dev_es_seguro_por_defecto" {
   }
 
   assert {
-    condition     = strcontains(module.backend.task_definition_json, "\"readonlyRootFilesystem\":true")
-    error_message = "El backend debe correr con sistema de archivos de solo lectura"
+    condition     = strcontains(module.backend.task_definition_json, "\"drop\":[\"ALL\"]")
+    error_message = "El backend debe correr sin capabilities de Linux"
   }
 
   assert {

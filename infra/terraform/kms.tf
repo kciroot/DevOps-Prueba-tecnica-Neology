@@ -1,4 +1,4 @@
-# Llave KMS propia (CMK) con rotación anual para cifrar logs y el tema de alertas.
+# Llave KMS propia (CMK) con rotación anual para cifrar el tema SNS de alertas.
 # Nota: CloudWatch Alarms NO puede publicar en un tema SNS cifrado con la llave administrada
 # por AWS (alias/aws/sns); por eso se usa una CMK que autoriza explícitamente a CloudWatch.
 
@@ -22,25 +22,10 @@ data "aws_iam_policy_document" "kms" {
       identifiers = ["cloudwatch.amazonaws.com"]
     }
   }
-
-  statement {
-    sid       = "CloudWatchLogsEncryption"
-    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
-    resources = ["*"]
-    principals {
-      type        = "Service"
-      identifiers = ["logs.${var.aws_region}.amazonaws.com"]
-    }
-    condition {
-      test     = "ArnLike"
-      variable = "kms:EncryptionContext:aws:logs:arn"
-      values   = ["arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name}/*"]
-    }
-  }
 }
 
 resource "aws_kms_key" "main" {
-  description             = "${local.name}: logs y alertas"
+  description             = "${local.name}: tema SNS de alertas"
   enable_key_rotation     = true
   deletion_window_in_days = 30
   policy                  = data.aws_iam_policy_document.kms.json

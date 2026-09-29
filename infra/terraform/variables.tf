@@ -114,6 +114,12 @@ variable "db" {
   })
 }
 
+variable "db_password_version" {
+  description = "Incrementar para rotar el password de la BD (se reescribe en RDS y Secrets Manager)"
+  type        = number
+  default     = 1
+}
+
 # ---------------------------------------------------------------------------
 # Alertas y CI/CD
 # ---------------------------------------------------------------------------
