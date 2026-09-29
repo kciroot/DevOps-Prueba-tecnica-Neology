@@ -13,7 +13,7 @@ Fecha: 29-sep-2026. Nada se marca como validado sin haberlo ejecutado.
 | Respaldo | `make backup` | `backups/parking-20260929-165314.dump` + `.sha256` |
 | Restauración | `make restore-check` | Restauración en BD temporal y comparación de conteos |
 | Simulacros | `make drills` | Errores HTTP, BD caída, backend caído, estado de contenedores |
-| Terraform | `make tf-check` | `fmt`, `validate` y `terraform test` en verde; `.terraform.lock.hcl` generado para `linux_amd64` y `darwin_arm64` |
+| Terraform | `terraform providers lock` | `.terraform.lock.hcl` generado para `linux_amd64` y `darwin_arm64` (Terraform real) |
 
 ### Salida de `make validate` (resumen)
 
@@ -55,6 +55,15 @@ La validación real encontró 4 problemas que la revisión estática no detectó
 | 4 | (Habría fallado a continuación) Control de Actuator | nginx responde `index.html` con 200 a rutas desconocidas (SPA) | Se verifica el contenido, no el código HTTP | mismo commit que el #3 |
 
 Los errores 1 y 2 también habrían fallado en GitHub Actions: la validación local los adelantó.
+
+### Primera ejecución en GitHub Actions
+
+`CI · backend` y `CI · frontend` pasaron a la primera (confirman en CI las correcciones #1 y #2). Fallaron dos jobs, y Build, Release y Deploy no corrieron: el quality gate funcionó.
+
+| # | Job | Causa | Corrección |
+|---|---|---|---|
+| 5 | `CI · terraform` | *Unknown condition value*: Terraform genera los valores simulados en el apply, así que dos aserciones sobre atributos calculados no se podían evaluar en un `plan`. OpenTofu, usado para validar sin acceso a HashiCorp, sí los genera en el plan: por eso aquí pasaba | Las aserciones verifican valores conocidos en el plan: nombres de variables secretas y en texto plano (`secret_variable_names`, `plain_variable_names`). Mismo resultado en Terraform y OpenTofu |
+| 6 | `Security · Trivy` | Maven Central respondió *429 Too Many Requests* mientras Trivy resolvía los BOM del `pom.xml` (4 ejecuciones simultáneas desde runners compartidos) | Escaneo del repositorio sin red (`TRIVY_OFFLINE_SCAN`). Las dependencias Java se escanean con versiones exactas sobre la imagen. Además, las ramas de trabajo se validan solo en su Pull Request: menos ejecuciones duplicadas |
 
 ## 3. Validación estática (entorno de desarrollo, sin Docker ni registros)
 

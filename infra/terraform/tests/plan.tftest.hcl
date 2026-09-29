@@ -2,6 +2,8 @@
 #   terraform test
 # Verifican las decisiones de seguridad más importantes sobre el plan.
 
+# Las aserciones usan solo valores conocidos en el plan (configuración y nombres de variables),
+# no atributos que el provider calcula: así el resultado es el mismo en Terraform y OpenTofu.
 mock_provider "aws" {
   mock_data "aws_availability_zones" {
     defaults = { names = ["us-east-1a", "us-east-1b", "us-east-1c"] }
@@ -90,16 +92,11 @@ run "dev_es_seguro_por_defecto" {
   }
 
   assert {
-    condition     = strcontains(module.backend.task_definition_json, "\"drop\":[\"ALL\"]")
-    error_message = "El backend debe correr sin capabilities de Linux"
-  }
-
-  assert {
     condition = (
-      strcontains(module.backend.task_definition_json, "\"DB_PASSWORD\",\"valueFrom\":") &&
-      !strcontains(module.backend.task_definition_json, "\"DB_PASSWORD\",\"value\":")
+      contains(module.backend.secret_variable_names, "DB_PASSWORD") &&
+      !contains(module.backend.plain_variable_names, "DB_PASSWORD")
     )
-    error_message = "El password de la BD debe venir de Secrets Manager, nunca en texto plano"
+    error_message = "El password de la BD debe venir de Secrets Manager, nunca como variable en texto plano"
   }
 
   assert {

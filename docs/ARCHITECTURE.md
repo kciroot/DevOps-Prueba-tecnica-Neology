@@ -179,7 +179,7 @@ Release solo corre en `main` y en tags `v*`. Deploy: `main` → dev; tag `v*` �
 | CI | `backend` | `mvn verify` (tests + JAR), Java 17, caché Maven | No hay build |
 | CI | `frontend` | `npm ci` (lockfile exacto) + build de producción con budgets, Node 22, caché npm | No hay build |
 | CI | `terraform` | `fmt -check`, `init -backend=false`, `validate`, `test` (plan simulado) | No hay build |
-| Security | `security` | Trivy fs: dependencias, secretos, misconfig. Gate: HIGH/CRITICAL con parche | No hay build |
+| Security | `security` | Trivy fs: dependencias npm, secretos, misconfig de Dockerfile y Terraform. Gate: HIGH/CRITICAL con parche. Las dependencias Java se escanean en la imagen (job `build`) | No hay build |
 | Build | `build` | Imágenes (caché gha) → Trivy de imágenes → E2E con Compose → pruebas de alertas | No hay release |
 | Release | `release` | Solo `main`/tags: etiqueta y sube a GHCR **las mismas imágenes** | No hay deploy |
 | Deploy | `deploy` | OIDC → `terraform plan/apply` con `image_tag=sha-<commit>` → smoke test | ECS vuelve solo a la versión anterior |
@@ -199,7 +199,7 @@ Release solo corre en `main` y en tags `v*`. Deploy: `main` → dev; tag `v*` �
 3. Variable de repositorio `DEPLOY_ENABLED=true` cuando exista la cuenta AWS.
 
 ### Checklist CI/CD
-- [x] Se ejecuta en PR, en `main`, en tags `v*` y en la rama de entrega
+- [x] Se ejecuta en cada Pull Request, en `main` y en tags `v*`
 - [x] Tests del backend antes de construir imágenes
 - [x] Instalación reproducible del frontend (`npm ci`)
 - [x] Escaneo de dependencias, secretos e IaC como gate

@@ -14,7 +14,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, "candidato/**"]   # rama de entrega de la prueba: corre CI/Security/Build
+    branches: [main]   # las ramas de trabajo se validan en su Pull Request (evita ejecuciones duplicadas)
     tags: ["v*.*.*"]
   workflow_dispatch:
 
@@ -119,6 +119,11 @@ jobs:
     name: "Security · Trivy (deps, secretos, IaC)"
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      # Sin consultas a Maven Central: resolver los BOM del pom.xml desde el runner provocó
+      # 429 Too Many Requests. Las dependencias Java se escanean con versiones exactas en el
+      # job build (Trivy sobre la imagen, que contiene los JAR reales).
+      TRIVY_OFFLINE_SCAN: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

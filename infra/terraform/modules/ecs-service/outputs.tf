@@ -8,7 +8,12 @@ output "task_definition_arn" {
   value       = aws_ecs_task_definition.this.arn
 }
 
-output "task_definition_json" {
-  description = "Definición de contenedores renderizada (usada por las pruebas de terraform test)"
-  value       = aws_ecs_task_definition.this.container_definitions
+output "secret_variable_names" {
+  description = "Variables inyectadas desde Secrets Manager (verificado por terraform test)"
+  value       = keys(var.secrets)
+}
+
+output "plain_variable_names" {
+  description = "Variables de entorno en texto plano (verificado por terraform test)"
+  value       = keys(var.environment)
 }
