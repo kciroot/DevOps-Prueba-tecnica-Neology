@@ -70,8 +70,9 @@ services:
     expose:
       - "8080"
       - "8081"
+    # tmpfs con modo explícito: por defecto se crean de root y el usuario sin privilegios no podría escribir
     tmpfs:
-      - /tmp                         # Tomcat necesita un directorio temporal escribible
+      - /tmp:mode=1777               # Tomcat necesita un directorio temporal escribible
     networks:
       - edge
       - data
@@ -96,8 +97,8 @@ services:
     ports:
       - "${FRONTEND_PORT:-4200}:8080"
     tmpfs:
-      - /tmp                         # pid y temporales de nginx
-      - /etc/nginx/conf.d            # destino de la plantilla procesada por envsubst
+      - /tmp:mode=1777               # pid y temporales de nginx
+      - /etc/nginx/conf.d:mode=1777  # destino de la plantilla procesada por envsubst (UID 101)
     networks:
       - edge
     # Arranque ordenado: `docker compose up -d` termina cuando el backend ya está sano,
