@@ -42,7 +42,6 @@ services:
       start_period: 10s
     security_opt:
       - no-new-privileges:true
-    shm_size: 128m
     stop_grace_period: 30s
     restart: unless-stopped
     logging:
@@ -59,7 +58,9 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: postgres
       APP_ENV: local
-      DB_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-parking}
+      APP_VERSION: ${IMAGE_TAG:-dev}
+      # ApplicationName: en pg_stat_activity se ve qué app y versión abre cada conexión
+      DB_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-parking}?ApplicationName=parking-api-${IMAGE_TAG:-dev}
       DB_USERNAME: ${POSTGRES_USER:-parking}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env (ver .env.example)}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
@@ -99,6 +100,11 @@ services:
       - /etc/nginx/conf.d            # destino de la plantilla procesada por envsubst
     networks:
       - edge
+    # Arranque ordenado: `docker compose up -d` termina cuando el backend ya está sano,
+    # así el smoke test inmediato no recibe 502.
+    depends_on:
+      backend:
+        condition: service_healthy
     # Health check: definido en frontend/Dockerfile (/healthz)
     deploy:
       resources:

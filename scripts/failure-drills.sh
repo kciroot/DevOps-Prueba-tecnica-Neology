@@ -7,7 +7,7 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-base_url="http://localhost:${FRONTEND_PORT:-4200}"
+base_url="http://$(docker compose port frontend 8080 | sed 's/0.0.0.0/localhost/')"
 
 title() { printf '\n==================== %s ====================\n' "$*"; }
 health() { docker compose exec -T backend curl -s -w ' [HTTP %{http_code}]' http://127.0.0.1:8081/actuator/health || true; echo; }

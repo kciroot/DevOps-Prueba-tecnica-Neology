@@ -4,15 +4,18 @@
 #   ./scripts/validate-stack.sh             # construye las imágenes y valida
 #   ./scripts/validate-stack.sh --no-build  # usa imágenes ya construidas (CI)
 #   KEEP_RUNNING=1 ./scripts/validate-stack.sh   # no apaga el stack al terminar
+#   FRONTEND_PORT=4280 ./scripts/validate-stack.sh  # si tu stack de trabajo ya usa el 4200
+#
+# Usa un proyecto de Compose propio (parking-validate): sus contenedores y su volumen
+# son independientes del stack de trabajo, así que al terminar se borran sin tocar tus datos.
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
+export COMPOSE_PROJECT_NAME="parking-validate"
 
 build_flag="--build"
 [[ "${1:-}" == "--no-build" ]] && build_flag="--no-build"
-frontend_port="${FRONTEND_PORT:-4200}"
-base_url="http://localhost:${frontend_port}"
 
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -38,6 +41,9 @@ docker compose config --quiet
 step "2. Levantar el stack y esperar a que todos los servicios estén healthy"
 docker compose up --detach $build_flag --wait --wait-timeout 180
 docker compose ps
+# Puerto real publicado (respeta FRONTEND_PORT de .env)
+base_url="http://$(docker compose port frontend 8080 | sed 's/0.0.0.0/localhost/')"
+echo "    Frontend en $base_url"
 
 step "3. Health de Actuator (puerto de gestión interno 8081)"
 health="$(docker compose exec -T backend curl -fsS http://127.0.0.1:8081/actuator/health)"

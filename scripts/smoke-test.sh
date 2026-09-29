@@ -2,10 +2,11 @@
 # Prueba funcional de punta a punta, igual que un usuario: todo pasa por el frontend (nginx).
 #
 #   BASE_URL    URL pública del stack           (por defecto http://localhost:4200)
+#               FRONTEND_URL se acepta como alias (nombre usado por la versión original del script)
 #   HEALTH_URL  opcional: URL de Actuator health (p. ej. http://localhost:8081/actuator/health)
 set -euo pipefail
 
-base_url="${BASE_URL:-http://localhost:4200}"
+base_url="${BASE_URL:-${FRONTEND_URL:-http://localhost:4200}}"
 health_url="${HEALTH_URL:-}"
 plate="SMK-$(date +%H%M%S)"
 
