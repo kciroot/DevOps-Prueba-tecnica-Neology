@@ -6,4 +6,4 @@
 !angular.json
 !tsconfig*.json
 !src/
-!nginx.conf
+!nginx/

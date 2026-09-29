@@ -18,15 +18,21 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Correlación de peticiones frontend → backend.
  *
- * <p>nginx genera un {@code X-Request-ID} por petición y lo reenvía al backend. Este filtro lo
- * coloca en el MDC para que aparezca en cada línea de log JSON ({@code request_id}) y lo devuelve
- * en la respuesta. Si el header falta o no es seguro, se genera uno nuevo (evita log injection).
+ * <p>Origen del identificador, en orden de preferencia:
+ * <ol>
+ *   <li>{@code X-Request-ID}: lo genera nginx (stack local con Docker Compose).</li>
+ *   <li>{@code X-Amzn-Trace-Id}: lo genera el ALB de AWS (se usa el valor {@code Root=}).</li>
+ *   <li>Un UUID nuevo si no llega ninguno o no es seguro (evita log injection).</li>
+ * </ol>
+ * El valor se coloca en el MDC ({@code request_id} en cada línea de log JSON) y se devuelve en el
+ * header {@code X-Request-ID} de la respuesta, visible en las DevTools del navegador.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Request-ID";
+    public static final String AWS_TRACE_HEADER = "X-Amzn-Trace-Id";
     public static final String MDC_KEY = "request_id";
 
     private static final Logger log = LoggerFactory.getLogger(RequestIdFilter.class);
@@ -35,7 +41,8 @@ public class RequestIdFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        String requestId = resolveRequestId(request.getHeader(HEADER));
+        String requestId = resolveRequestId(request.getHeader(HEADER),
+                request.getHeader(AWS_TRACE_HEADER));
         MDC.put(MDC_KEY, requestId);
         response.setHeader(HEADER, requestId);
         try {
@@ -49,10 +56,31 @@ public class RequestIdFilter extends OncePerRequestFilter {
         }
     }
 
-    static String resolveRequestId(String candidate) {
-        if (candidate != null && SAFE_ID.matcher(candidate).matches()) {
-            return candidate;
+    static String resolveRequestId(String requestIdHeader, String awsTraceHeader) {
+        if (isSafe(requestIdHeader)) {
+            return requestIdHeader;
+        }
+        String awsRoot = extractAwsTraceRoot(awsTraceHeader);
+        if (isSafe(awsRoot)) {
+            return awsRoot;
         }
         return UUID.randomUUID().toString();
+    }
+
+    /** "Root=1-67891233-abcdef012345678912345678;Sampled=1" → "1-67891233-abcdef012345678912345678". */
+    private static String extractAwsTraceRoot(String header) {
+        if (header == null) {
+            return null;
+        }
+        for (String part : header.split(";")) {
+            if (part.startsWith("Root=")) {
+                return part.substring("Root=".length());
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSafe(String candidate) {
+        return candidate != null && SAFE_ID.matcher(candidate).matches();
     }
 }

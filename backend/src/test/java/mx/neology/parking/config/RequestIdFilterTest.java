@@ -28,10 +28,17 @@ class RequestIdFilterTest {
     }
 
     @Test
+    void usaElTraceIdDelAlbCuandoNoLlegaXRequestId() {
+        assertThat(RequestIdFilter.resolveRequestId(null,
+                "Root=1-67891233-abcdef012345678912345678;Sampled=1"))
+                .isEqualTo("1-67891233-abcdef012345678912345678");
+    }
+
+    @Test
     void reemplazaUnRequestIdInseguroOAusente() {
-        assertThat(RequestIdFilter.resolveRequestId("abc\n{\"inyectado\":true}"))
+        assertThat(RequestIdFilter.resolveRequestId("abc\n{\"inyectado\":true}", null))
                 .doesNotContain("\n")
                 .hasSize(36);
-        assertThat(RequestIdFilter.resolveRequestId(null)).hasSize(36);
+        assertThat(RequestIdFilter.resolveRequestId(null, null)).hasSize(36);
     }
 }
