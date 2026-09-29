@@ -1,47 +1,76 @@
 # Evidencia de validación
 
-Fecha: 29-sep-2026. Esta tabla separa **lo que se ejecutó** de **lo que falta ejecutar**. Nada se marca como validado sin haberlo corrido.
+Fecha: 29-sep-2026. Nada se marca como validado sin haberlo ejecutado.
 
-## Entorno donde se trabajó
-Contenedor Linux con acceso de red solo a GitHub: Maven Central, el registro de npm, Docker Hub, GHCR y HashiCorp responden 403, y no hay daemon de Docker. Por eso **la compilación, las imágenes y el stack se validan en GitHub Actions** (job `build`) o en una máquina con Docker.
+## 1. Ejecución real en macOS (Apple Silicon, Docker Desktop)
 
-## Ejecutado
-
-| # | Validación | Comando | Resultado |
-|---|---|---|---|
-| 1 | Sin secretos versionados (GUIA) | `git ls-files \| grep -E '(^\|/)(\.env\|id_rsa\|.*\.pem)$'` | Ninguno |
-| 2 | Compose válido | `docker compose config --quiet` | OK |
-| 3 | Compose falla sin password | `docker compose config` sin `.env` | `required variable POSTGRES_PASSWORD is missing a value` |
-| 4 | Exposición | `docker compose config --format json` | Solo `frontend` publica (`4200`); backend y database sin puertos |
-| 5 | Endurecimiento | idem | backend y frontend `read_only: true`, `cap_drop: [ALL]` |
-| 6 | Sin `latest`; versiones fijadas | `grep FROM/image` | Todas con versión de parche |
-| 7 | Usuario sin privilegios | `grep ^USER */Dockerfile` | `10001:10001` y `101` |
-| 8 | Scripts | `shellcheck -S style scripts/*.sh` | Sin hallazgos |
-| 9 | Workflow | `actionlint` | Sin hallazgos |
-| 10 | Reglas de alerta | `promtool check rules` / `promtool test rules alerts.test.yml` | 6 reglas OK / pruebas SUCCESS |
-| 11 | Terraform formato | `tofu fmt -check -recursive` | OK |
-| 12 | Terraform init/validate | `tofu init -backend=false` · `tofu validate` | OK |
-| 13 | Terraform plan simulado | `tofu test` (3 escenarios: dev, production, ambiente inválido) | 3 passed |
-| 14 | Seguridad del repo | `trivy fs --scanners secret,misconfig` (Trivy 0.74.0, checks embebidos) | exit 0: 0 secretos, 0 misconfig HIGH/CRITICAL en Dockerfiles y Terraform |
-
-Terraform se validó con **OpenTofu 1.12.6** y providers idénticos (aws 6.66.0, random 3.9.1) porque `releases.hashicorp.com` no era accesible. El job `terraform` del pipeline ejecuta lo mismo con Terraform 1.16.4.
-
-## No ejecutado aquí (y dónde se ejecuta)
-
-| Validación | Motivo | Dónde |
+| Validación | Comando | Resultado |
 |---|---|---|
-| `./scripts/verify.sh` (mvn test + npm build) | Maven Central y npm → 403 | Jobs `backend` y `frontend`; o local con `make test` |
-| `docker compose build --no-cache`, `up`, `ps`, logs | Sin daemon de Docker | Job `build` (`validate-stack.sh`); o local con `make validate` |
-| `./scripts/smoke-test.sh` | Requiere el stack | Incluido en `validate-stack.sh` |
-| Trivy de vulnerabilidades (dependencias e imágenes) | Base de datos de Trivy en `mirror.gcr.io` → 403 | Jobs `security` y `build` |
-| `terraform plan` real | Requiere credenciales AWS | `make tf-plan` con credenciales de solo lectura |
-| CSP en navegador | Requiere el stack en un navegador | Abrir <http://localhost:4200> y revisar la consola |
-| Comportamiento en ECS Fargate | Requiere cuenta AWS | Deploy a `dev` |
+| Tests del backend | `make test` (`mvn test`) | **7 tests, 0 fallas**: `ParkingServiceTest` 4/4 (originales) y `RequestIdFilterTest` 3/3 (nuevos) |
+| Build del frontend | `make test` (`npm ci` + `npm run build`) | Bundle de producción generado en `frontend/dist/` |
+| Imágenes | `docker compose build` | `parking-backend` y `parking-frontend` construidas (multi-arquitectura: corrieron en arm64) |
+| Stack completo | `make validate` | **`VALIDACIÓN DEL STACK CORRECTA`** (ver abajo) |
+| Respaldo | `make backup` | `backups/parking-20260929-165314.dump` + `.sha256` |
+| Restauración | `make restore-check` | Restauración en BD temporal y comparación de conteos |
+| Simulacros | `make drills` | Errores HTTP, BD caída, backend caído, estado de contenedores |
+| Terraform | `make tf-check` | `fmt`, `validate` y `terraform test` en verde; `.terraform.lock.hcl` generado para `linux_amd64` y `darwin_arm64` |
 
-## Pendiente de registrar (completar tras la primera ejecución)
+### Salida de `make validate` (resumen)
 
-- [ ] Enlace al run del pipeline en verde: `https://github.com/<owner>/<repo>/actions/runs/<id>`
-- [ ] Salida de `make validate` (termina con `VALIDACIÓN DEL STACK CORRECTA`)
-- [ ] Tamaño de las imágenes (paso *Tamaño de imágenes* del job `build`)
-- [ ] `infra/terraform/.terraform.lock.hcl` generado con
-      `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` y commiteado
+```text
+==> 2. Levantar el stack y esperar a que todos los servicios estén healthy
+ ✔ Container parking-validate-database-1 Healthy
+ ✔ Container parking-validate-backend-1  Healthy
+ ✔ Container parking-validate-frontend-1 Healthy
+==> 3. Health de Actuator (puerto de gestión interno 8081)
+    {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP"},...}}
+==> 4. Controles de seguridad del runtime
+    UID backend=10001 frontend=101
+    PostgreSQL no está publicado en el host
+    Backend (8080 y 8081) no está publicado en el host
+    /actuator no es accesible públicamente (nginx no lo reenvía al backend)
+    Sistema de archivos de solo lectura
+==> 5. Métricas Prometheus disponibles en el puerto de gestión
+    OK (hikaricp_*, http_server_requests_*, jvm_*)
+==> 6. Prueba funcional (smoke test) a través del frontend
+    X-Request-ID=eb188af1d90dd084c5657d035c9e1bf8
+    SMOKE TEST CORRECTO para la placa SMK-104650.
+==> 7. Correlación frontend -> backend por X-Request-ID
+    request_id=29b06f55cc8aa1315089a2a0d2e05904 presente en nginx y en backend
+    {"log":{"level":"INFO","logger":"mx.neology.parking.config.RequestIdFilter"},
+     "message":"GET /neo/vehiculos -> 200 (36 ms)","request_id":"29b06f55cc8aa1315089a2a0d2e05904",
+     "http_status":200,"duration_ms":36, ...}
+VALIDACIÓN DEL STACK CORRECTA
+```
+
+## 2. Errores encontrados por la validación y corregidos
+
+La validación real encontró 4 problemas que la revisión estática no detectó. Cada uno está en su propio commit.
+
+| # | Síntoma | Causa | Corrección | Commit |
+|---|---|---|---|---|
+| 1 | `npm ci` falla dentro de la imagen: *lock file's chokidar@4.0.3 does not satisfy chokidar@3.6.0* | El `package-lock.json` de la app base se generó con el npm de Node 20. El npm de Node 22 valida el peer opcional `chokidar ^3.5.2` de `@angular-devkit/core` | Árbol de dependencias reubicado (chokidar 3.6.0 en la raíz y 4.0.3 anidado en `@angular/compiler-cli`), con las mismas versiones e integridades. `package.json` sin cambios | `fix(frontend): package-lock.json compatible con el npm de Node 22` |
+| 2 | Frontend `unhealthy`: *`/etc/nginx/conf.d` is not writable* | El tmpfs se creaba propiedad de root y nginx corre como UID 101; arrancaba sin el bloque `server` | `tmpfs` con `mode=1777` en frontend y backend | `fix(compose): tmpfs escribibles para usuarios sin privilegios` |
+| 3 | Falso positivo: *PostgreSQL está publicado en el host* | `docker compose port` devuelve `:0` con exit 0 para puertos expuestos pero no publicados | Solo cuenta como publicado un puerto de host distinto de 0 | `fix(scripts): detectar puertos publicados correctamente` |
+| 4 | (Habría fallado a continuación) Control de Actuator | nginx responde `index.html` con 200 a rutas desconocidas (SPA) | Se verifica el contenido, no el código HTTP | mismo commit que el #3 |
+
+Los errores 1 y 2 también habrían fallado en GitHub Actions: la validación local los adelantó.
+
+## 3. Validación estática (entorno de desarrollo, sin Docker ni registros)
+
+| Validación | Resultado |
+|---|---|
+| `git ls-files` sin `.env`, `.pem` ni llaves (control de la GUIA) | Ninguno |
+| `docker compose config` / sin `POSTGRES_PASSWORD` | OK / falla con mensaje claro |
+| `shellcheck -S style scripts/*.sh` | Sin hallazgos |
+| `actionlint` sobre `pipeline.yml` | Sin hallazgos |
+| `promtool check rules` y `promtool test rules alerts.test.yml` | 6 reglas / SUCCESS |
+| `trivy fs --scanners secret,misconfig` | 0 secretos; 0 misconfiguraciones HIGH/CRITICAL |
+
+## 4. Pendiente
+
+| Validación | Dónde |
+|---|---|
+| Pipeline completo en GitHub Actions (incluye Trivy de dependencias e imágenes) | Tras el push de la rama; registrar aquí el enlace del run |
+| `terraform plan` real | Requiere credenciales AWS (`make tf-plan`) |
+| Comportamiento en ECS Fargate | Requiere cuenta AWS (deploy a `dev`) |

@@ -4,10 +4,65 @@ Principio de diseño: **simplicidad > seguridad > mantenibilidad > automatizaci�
 
 ## 1. Componentes
 
-```text
-Usuario ──► Frontend (nginx + Angular) ──/neo/*──► Backend (Spring Boot) ──JDBC/TLS──► PostgreSQL
-               │ /healthz                              │ :8081 Actuator (health, prometheus)
-               │ log JSON con request_id               │ log JSON con el mismo request_id
+### Local (Docker Compose)
+
+```mermaid
+flowchart LR
+  U([Usuario]) -->|:4200 único puerto publicado| FE
+  subgraph edge["red edge"]
+    FE["frontend<br/>nginx UID 101<br/>/healthz"]
+    BE["backend<br/>Spring Boot UID 10001<br/>:8080 API · :8081 Actuator"]
+    PR["prometheus<br/>(perfil opcional)"]
+  end
+  subgraph data["red data · internal (sin internet)"]
+    DB[("PostgreSQL 16<br/>sin puertos al host")]
+  end
+  FE -->|/neo/* + X-Request-ID| BE
+  BE -->|JDBC| DB
+  PR -.->|scrape :8081/actuator/prometheus| BE
+```
+
+### AWS (Terraform)
+
+```mermaid
+flowchart LR
+  U([Internet]) -->|80 → 443 HTTPS + HSTS| ALB
+  subgraph pub["Subredes públicas"]
+    ALB["Application Load Balancer"]
+    NAT["NAT Gateway"]
+  end
+  subgraph app["Subredes privadas de aplicación"]
+    FE["ECS Fargate<br/>frontend"]
+    BE["ECS Fargate<br/>backend"]
+  end
+  subgraph dat["Subredes de datos (sin ruta a internet)"]
+    RDS[("RDS PostgreSQL 16<br/>cifrado · TLS · PITR")]
+  end
+  ALB -->|/*| FE
+  ALB -->|/neo/*  · health :8081 readiness| BE
+  BE -->|5432 solo desde SG backend| RDS
+  FE & BE -.->|imágenes GHCR| NAT
+  SM[["Secrets Manager<br/>password write-only"]] -.->|secrets al iniciar la tarea| BE
+  CW[["CloudWatch<br/>logs · métricas · alarmas → SNS"]]
+  FE & BE & ALB & RDS -.-> CW
+```
+
+### Recorrido de una petición y correlación
+
+```mermaid
+sequenceDiagram
+  participant N as Navegador
+  participant F as nginx (frontend)
+  participant B as Backend
+  participant P as PostgreSQL
+  N->>F: POST /neo/estancias/entrada
+  F->>F: genera request_id (X-Request-ID)
+  F->>B: proxy + X-Request-ID
+  B->>B: MDC request_id → todas las líneas de log
+  B->>P: SQL (pool Hikari, ApplicationName=parking-api-<versión>)
+  P-->>B: resultado
+  B-->>F: 201 + X-Request-ID · log {"request_id", "duration_ms", "http_status"}
+  F-->>N: 201 + X-Request-ID · access log JSON {"request_id", "status", "request_time"}
 ```
 
 | Componente | Local (Docker Compose) | AWS (Terraform) |
@@ -103,6 +158,22 @@ Usuario ──► Frontend (nginx + Angular) ──/neo/*──► Backend (Spri
 
 Archivo único: `.github/workflows/pipeline.yml`.
 
+```mermaid
+flowchart LR
+  subgraph CI
+    B1["backend<br/>mvn verify"]
+    F1["frontend<br/>npm ci + build"]
+    T1["terraform<br/>fmt · validate · test"]
+  end
+  S1["Security<br/>Trivy fs"]
+  BU["Build<br/>imágenes → Trivy imagen<br/>→ E2E Compose → promtool"]
+  R["Release<br/>GHCR sha-&lt;commit&gt;<br/>(misma imagen probada)"]
+  D["Deploy<br/>OIDC → terraform apply<br/>→ smoke test"]
+  B1 & F1 & T1 & S1 --> BU --> R --> D
+```
+
+Release solo corre en `main` y en tags `v*`. Deploy: `main` → dev; tag `v*` → production con aprobación.
+
 | Etapa | Job | Qué valida | Si falla |
 |---|---|---|---|
 | CI | `backend` | `mvn verify` (tests + JAR), Java 17, caché Maven | No hay build |
@@ -138,7 +209,7 @@ Archivo único: `.github/workflows/pipeline.yml`.
 - [x] Tags inmutables por commit
 - [x] Permisos mínimos por job; sin secretos impresos
 - [x] Deploy solo tras todos los gates; producción con aprobación
-- [ ] Commitear `infra/terraform/.terraform.lock.hcl` (ver docs/VALIDATION.md)
+- [x] Providers con hashes fijados (`infra/terraform/.terraform.lock.hcl`)
 
 ## 5. Branching
 
