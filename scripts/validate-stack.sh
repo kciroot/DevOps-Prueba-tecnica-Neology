@@ -58,19 +58,24 @@ frontend_uid="$(docker compose exec -T frontend id -u)"
 echo "    UID backend=$backend_uid frontend=$frontend_uid"
 [[ "$backend_uid" != "0" && "$frontend_uid" != "0" ]] || fail "un contenedor corre como root"
 
-if docker compose port database 5432 >/dev/null 2>&1; then
-  fail "PostgreSQL está publicado en el host"
-fi
+# `docker compose port` responde ":0" (exit 0) para puertos expuestos pero NO publicados:
+# solo un puerto de host distinto de 0 significa que el servicio es accesible desde fuera.
+published_port() { docker compose port "$1" "$2" 2>/dev/null | grep -E ':[1-9][0-9]*$' || true; }
+
+[[ -z "$(published_port database 5432)" ]] || fail "PostgreSQL está publicado en el host"
 echo "    PostgreSQL no está publicado en el host"
 
-if docker compose port backend 8080 >/dev/null 2>&1; then
-  fail "el backend está publicado en el host"
-fi
-echo "    Backend no está publicado en el host"
+for port in 8080 8081; do
+  [[ -z "$(published_port backend "$port")" ]] || fail "el backend ($port) está publicado en el host"
+done
+echo "    Backend (8080 y 8081) no está publicado en el host"
 
-actuator_status="$(curl -s -o /dev/null -w '%{http_code}' "$base_url/actuator/health")"
-[[ "$actuator_status" != "200" ]] || fail "Actuator es accesible desde el frontend público"
-echo "    /actuator no es accesible públicamente (HTTP $actuator_status)"
+# nginx responde index.html (SPA) a rutas desconocidas: lo que importa es que NO llegue a Actuator
+actuator_body="$(curl -s "$base_url/actuator/health")"
+if grep -q '"status"' <<<"$actuator_body"; then
+  fail "Actuator es accesible desde el frontend público"
+fi
+echo "    /actuator no es accesible públicamente (nginx no lo reenvía al backend)"
 
 if docker compose exec -T backend sh -c 'touch /app/probe' 2>/dev/null; then
   fail "el sistema de archivos del backend es escribible"
