@@ -1,0 +1,9 @@
+# Allow-list: solo lo necesario para compilar Angular y configurar nginx.
+# Evita enviar node_modules/, dist/, .angular/ o archivos .env al build context.
+*
+!package.json
+!package-lock.json
+!angular.json
+!tsconfig*.json
+!src/
+!nginx.conf

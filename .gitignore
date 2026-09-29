@@ -1,0 +1,51 @@
+# --- Secretos y configuración local (NUNCA versionar) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+id_rsa*
+backend.hcl
+!backend.hcl.example
+
+# --- Backend (Maven) ---
+backend/target/
+*.class
+*.log
+
+# --- Frontend (Angular) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+npm-debug.log*
+
+# --- Terraform ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# El lock de providers SÍ se versiona (builds reproducibles)
+!.terraform.lock.hcl
+
+# --- Respaldos locales de base de datos ---
+backups/
+
+# --- Reportes de escaneo ---
+reports/
+*.sarif
+
+# --- IDE / SO ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
