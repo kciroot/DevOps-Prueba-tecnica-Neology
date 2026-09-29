@@ -53,7 +53,7 @@ Encontrados durante la auditoría de esta solución y corregidos: rotación auto
 | La app usa el usuario master de PostgreSQL | Importante | Usuario de aplicación con permisos DML y `CONNECTION LIMIT`, creado en el aprovisionamiento |
 | `ddl-auto: update` sin migraciones versionadas | Importante | Flyway: esquema versionado y rollback predecible |
 | Spring Boot 3.x sin soporte OSS | Importante | Migrar a Spring Boot 4.x (cambio de aplicación) |
-| Angular 18 fuera de soporte | Importante | Actualizar a una versión LTS de Angular |
+| Angular 18 fuera de soporte: 12 CVE HIGH (15 hallazgos) sin parche en la línea 18.x, aceptados temporalmente en `.trivyignore` tras revisar la exposición (sin SSR, sin i18n, sin innerHTML, formatos fijos, URLs relativas); caducan el 2026-12-31 | Importante | Migrar a Angular 20.3.27 o posterior (cambio de aplicación) |
 | Solo lectura del FS en Fargate | Mejora | Declarar `VOLUME /tmp` en las imágenes y validar en Fargate |
 | Imágenes desde GHCR vía NAT | Mejora | ECR + VPC endpoints (sin salida a internet) + escaneo de ECR |
 | Sin firma de imágenes ni SBOM publicado | Mejora | cosign + SBOM (CycloneDX) adjunto a la imagen |

@@ -64,6 +64,7 @@ Los errores 1 y 2 también habrían fallado en GitHub Actions: la validación lo
 |---|---|---|---|
 | 5 | `CI · terraform` | *Unknown condition value*: Terraform genera los valores simulados en el apply, así que dos aserciones sobre atributos calculados no se podían evaluar en un `plan`. OpenTofu, usado para validar sin acceso a HashiCorp, sí los genera en el plan: por eso aquí pasaba | Las aserciones verifican valores conocidos en el plan: nombres de variables secretas y en texto plano (`secret_variable_names`, `plain_variable_names`). Mismo resultado en Terraform y OpenTofu |
 | 6 | `Security · Trivy` | Maven Central respondió *429 Too Many Requests* mientras Trivy resolvía los BOM del `pom.xml` (4 ejecuciones simultáneas desde runners compartidos) | Escaneo del repositorio sin red (`TRIVY_OFFLINE_SCAN`). Las dependencias Java se escanean con versiones exactas sobre la imagen. Además, las ramas de trabajo se validan solo en su Pull Request: menos ejecuciones duplicadas |
+| 7 | `Security · Trivy` (segundo run) | Con el escaneo ya funcionando, Trivy encontró 15 hallazgos HIGH (12 CVE) en Angular 18.2.13. Angular 18 no tiene soporte y ninguno tiene parche en la línea 18.x | Excepciones documentadas en `.trivyignore`, una por CVE, con el motivo por el que la app no está expuesta y caducidad `exp:2026-12-31` (al vencer, el gate vuelve a fallar). La migración a Angular 20.3.27+ queda como riesgo en `docs/SECURITY.md` |
 
 ## 3. Validación estática (entorno de desarrollo, sin Docker ni registros)
 
