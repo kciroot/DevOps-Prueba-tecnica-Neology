@@ -44,5 +44,5 @@ restore-check: ## Prueba el último respaldo restaurándolo en una BD temporal
 observability: ## Levanta Prometheus en http://localhost:9090
 	docker compose --profile observability up --detach
 
-tf-check: ## Formato y validación de Terraform (sin backend remoto)
-	cd infra/terraform && terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate
+tf-check: ## Formato, validación y pruebas de Terraform (sin credenciales AWS)
+	cd infra/terraform && terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate && terraform test

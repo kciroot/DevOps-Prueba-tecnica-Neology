@@ -108,6 +108,9 @@ jobs:
       - name: Validate
         run: terraform validate
 
+      - name: Pruebas del plan con provider simulado (sin credenciales ni costo)
+        run: terraform test
+
   # ===========================================================================
   # SECURITY
   # ===========================================================================
