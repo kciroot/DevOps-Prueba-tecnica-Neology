@@ -217,6 +217,11 @@ jobs:
           sed "s|CAMBIAR_POR_UN_PASSWORD_ALEATORIO|$(openssl rand -hex 24)|" .env.example > .env
           ./scripts/validate-stack.sh --no-build
 
+      - name: Pruebas de reglas de alerta (promtool)
+        run: >-
+          docker run --rm -v "$PWD/observability/prometheus:/rules:ro" -w /rules
+          --entrypoint promtool prom/prometheus:v3.15.0 test rules alerts.test.yml
+
   # ===========================================================================
   # RELEASE: publica imágenes inmutables en GitHub Container Registry
   # ===========================================================================
