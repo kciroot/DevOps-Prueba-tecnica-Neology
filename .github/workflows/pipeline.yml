@@ -169,6 +169,7 @@ jobs:
           cache-to: type=gha,scope=backend,mode=max
 
       - name: Build frontend
+        id: build-frontend
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: frontend
@@ -186,7 +187,10 @@ jobs:
           trivy-config: trivy.yaml
           version: ${{ env.TRIVY_VERSION }}
 
+      # Corre aunque falle el escaneo del backend: un solo run reporta ambas
+      # imágenes. El job sigue fallando y los pasos siguientes no corren.
       - name: Trivy — imagen frontend
+        if: ${{ !cancelled() && steps.build-frontend.outcome == 'success' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image

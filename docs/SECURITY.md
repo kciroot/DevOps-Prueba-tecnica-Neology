@@ -46,6 +46,8 @@
 
 Encontrados durante la auditoría de esta solución y corregidos: rotación automática del secreto de RDS que habría tumbado el backend cada 7 días; release que reconstruía (lo publicado ≠ lo escaneado); HSTS documentado pero no configurado.
 
+Encontrados por el escaneo de imágenes en CI y corregidos: Tomcat, Jackson y pgjdbc con CVE con parche (3 CRITICAL, 2 HIGH); se fijan las versiones de parche en `pom.xml` sin cambiar de línea menor.
+
 ## 4. Riesgos pendientes (conscientemente fuera de alcance)
 
 | Riesgo | Clasificación | Recomendación |

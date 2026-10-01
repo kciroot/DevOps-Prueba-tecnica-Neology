@@ -19,6 +19,17 @@
 
     <properties>
         <java.version>17</java.version>
+        <!--
+          Parches de seguridad sobre las versiones que trae Spring Boot 3.5.16
+          (detectados por Trivy en la imagen). Solo cambia el número de parche,
+          misma línea menor. Quitar cuando el parent de Spring Boot los incluya.
+          - Tomcat 10.1.55 -> 10.1.58: CVE-2026-65182, CVE-2026-65905, CVE-2026-68525 (CRITICAL)
+          - Jackson 2.21.4 -> 2.21.6: CVE-2026-68497 (HIGH, DoS con números sin límite)
+          - pgjdbc 42.7.11 -> 42.7.12: CVE-2026-54291 (HIGH, downgrade de SCRAM)
+        -->
+        <tomcat.version>10.1.58</tomcat.version>
+        <jackson-bom.version>2.21.6</jackson-bom.version>
+        <postgresql.version>42.7.12</postgresql.version>
     </properties>
 
     <dependencies>
