@@ -46,7 +46,7 @@
 
 Encontrados durante la auditoría de esta solución y corregidos: rotación automática del secreto de RDS que habría tumbado el backend cada 7 días; release que reconstruía (lo publicado ≠ lo escaneado); HSTS documentado pero no configurado.
 
-Encontrados por el escaneo de imágenes en CI y corregidos: Tomcat, Jackson y pgjdbc con CVE con parche (3 CRITICAL, 2 HIGH); se fijan las versiones de parche en `pom.xml` sin cambiar de línea menor.
+Encontrados por el escaneo de imágenes en CI: Jackson y pgjdbc (2 HIGH) corregidos fijando la versión de parche en `pom.xml`; Tomcat (3 CRITICAL) aceptado temporalmente, ver la tabla siguiente.
 
 ## 4. Riesgos pendientes (conscientemente fuera de alcance)
 
@@ -55,6 +55,7 @@ Encontrados por el escaneo de imágenes en CI y corregidos: Tomcat, Jackson y pg
 | La app usa el usuario master de PostgreSQL | Importante | Usuario de aplicación con permisos DML y `CONNECTION LIMIT`, creado en el aprovisionamiento |
 | `ddl-auto: update` sin migraciones versionadas | Importante | Flyway: esquema versionado y rollback predecible |
 | Spring Boot 3.x sin soporte OSS | Importante | Migrar a Spring Boot 4.x (cambio de aplicación) |
+| Tomcat 10.1.55: 3 CVE CRITICAL (security constraints, DIGEST, FORM) cuyo parche 10.1.58 aún no está en Maven Central; aceptados en `.trivyignore` porque la app no usa autenticación ni security constraints de Tomcat; caducan el 2026-10-31 | Importante | Fijar `tomcat.version` 10.1.58 en `pom.xml` en cuanto se publique, o subir Spring Boot a la 3.5.x que lo incluya |
 | Angular 18 fuera de soporte: 12 CVE HIGH (15 hallazgos) sin parche en la línea 18.x, aceptados temporalmente en `.trivyignore` tras revisar la exposición (sin SSR, sin i18n, sin innerHTML, formatos fijos, URLs relativas); caducan el 2026-12-31 | Importante | Migrar a Angular 20.3.27 o posterior (cambio de aplicación) |
 | Solo lectura del FS en Fargate | Mejora | Declarar `VOLUME /tmp` en las imágenes y validar en Fargate |
 | Imágenes desde GHCR vía NAT | Mejora | ECR + VPC endpoints (sin salida a internet) + escaneo de ECR |

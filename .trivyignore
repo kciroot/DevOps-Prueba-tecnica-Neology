@@ -31,3 +31,20 @@ CVE-2026-22610 exp:2026-12-31
 CVE-2026-27970 exp:2026-12-31
 CVE-2026-32635 exp:2026-12-31
 CVE-2026-69151 exp:2026-12-31
+
+# ---------------------------------------------------------------------------
+# Tomcat 10.1.55 (embebido en Spring Boot 3.5.16). El parche es 10.1.58, pero al
+# 1-oct-2026 no está publicado en Maven Central (el build falla al resolverlo).
+# Exposición revisada sobre el código: la app no usa autenticación ni restricciones
+# de seguridad de Tomcat (sin Spring Security, sin web.xml, sin realm, sin DIGEST ni
+# FORM). Caducidad corta a propósito: al vencer, el gate obliga a fijar
+# <tomcat.version>10.1.58</tomcat.version> en backend/pom.xml (o subir Spring Boot).
+# Responsable: Ricardo Palacios · revisar antes de 2026-10-31
+# ---------------------------------------------------------------------------
+
+# Bypass de security constraints: la app no declara security constraints en Tomcat
+CVE-2026-65182 exp:2026-10-31
+# Replay en el autenticador DIGEST: la app no usa autenticación DIGEST
+CVE-2026-65905 exp:2026-10-31
+# Bypass de autenticación FORM: la app no usa autenticación FORM
+CVE-2026-68525 exp:2026-10-31
