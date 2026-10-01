@@ -56,7 +56,7 @@ Encontrados por el escaneo de imágenes en CI: Jackson y pgjdbc (2 HIGH) corregi
 | `ddl-auto: update` sin migraciones versionadas | Importante | Flyway: esquema versionado y rollback predecible |
 | Spring Boot 3.x sin soporte OSS | Importante | Migrar a Spring Boot 4.x (cambio de aplicación) |
 | Tomcat 10.1.55: 3 CVE CRITICAL (security constraints, DIGEST, FORM) cuyo parche 10.1.58 aún no está en Maven Central; aceptados en `.trivyignore` porque la app no usa autenticación ni security constraints de Tomcat; caducan el 2026-10-31 | Importante | Fijar `tomcat.version` 10.1.58 en `pom.xml` en cuanto se publique, o subir Spring Boot a la 3.5.x que lo incluya |
-| Angular 18 fuera de soporte: 12 CVE HIGH (15 hallazgos) sin parche en la línea 18.x, aceptados temporalmente en `.trivyignore` tras revisar la exposición (sin SSR, sin i18n, sin innerHTML, formatos fijos, URLs relativas); caducan el 2026-12-31 | Importante | Migrar a Angular 20.3.27 o posterior (cambio de aplicación) |
+| Angular 18 fuera de soporte: 13 CVE HIGH (16 hallazgos) sin parche en la línea 18.x, aceptados temporalmente en `.trivyignore` tras revisar la exposición (sin SSR, sin i18n, sin innerHTML, formatos fijos, URLs relativas); caducan el 2026-12-31 | Importante | Migrar a Angular 20.3.27 o posterior (cambio de aplicación) |
 | Solo lectura del FS en Fargate | Mejora | Declarar `VOLUME /tmp` en las imágenes y validar en Fargate |
 | Imágenes desde GHCR vía NAT | Mejora | ECR + VPC endpoints (sin salida a internet) + escaneo de ECR |
 | Sin firma de imágenes ni SBOM publicado | Mejora | cosign + SBOM (CycloneDX) adjunto a la imagen |
