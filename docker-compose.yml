@@ -1,56 +1,139 @@
+# Stack local: frontend (nginx + Angular) -> backend (Spring Boot) -> PostgreSQL
+#
+#   cp .env.example .env        # y definir POSTGRES_PASSWORD
+#   docker compose up --build --wait
+#   docker compose --profile observability up -d     # opcional: Prometheus
+#
+# Solo el frontend publica un puerto en el host. Backend y base de datos quedan en redes internas.
+name: parking
+
+# Endurecimiento común para los contenedores de la aplicación
+x-app-hardening: &app-hardening
+  read_only: true                    # sistema de archivos de solo lectura
+  security_opt:
+    - no-new-privileges:true         # impide escalar privilegios (setuid)
+  cap_drop:
+    - ALL                            # ninguna capability de Linux
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"                # rotación: evita llenar el disco
+      max-file: "3"
+
 services:
   database:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-parking}
       POSTGRES_USER: ${POSTGRES_USER:-parking}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parking_dev_password}
+      # Sin valor por defecto: si falta en .env, Compose se detiene con este mensaje
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env (ver .env.example)}
     volumes:
-      - parking_postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data   # único estado persistente del stack
+    networks:
+      - data
+    # Sin "ports": PostgreSQL no es accesible desde el host ni desde fuera
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
       retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
+    <<: *app-hardening
+    image: ${IMAGE_REGISTRY:-local}/parking-backend:${IMAGE_TAG:-dev}
     build:
       context: ./backend
     environment:
       SPRING_PROFILES_ACTIVE: postgres
-      DB_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-parking}
+      APP_ENV: local
+      APP_VERSION: ${IMAGE_TAG:-dev}
+      # ApplicationName: en pg_stat_activity se ve qué app y versión abre cada conexión
+      DB_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-parking}?ApplicationName=parking-api-${IMAGE_TAG:-dev}
       DB_USERNAME: ${POSTGRES_USER:-parking}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-parking_dev_password}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env (ver .env.example)}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       FRONTEND_URL: http://localhost:${FRONTEND_PORT:-4200}
-    ports:
-      - "${BACKEND_PORT:-8080}:8080"
+    # Documentación: 8080 API (red edge) · 8081 Actuator (interno). No se publican al host.
+    expose:
+      - "8080"
+      - "8081"
+    # tmpfs con modo explícito: por defecto se crean de root y el usuario sin privilegios no podría escribir
+    tmpfs:
+      - /tmp:mode=1777               # Tomcat necesita un directorio temporal escribible
+    networks:
+      - edge
+      - data
     depends_on:
       database:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 18
-      start_period: 20s
-    restart: unless-stopped
+    # Health check: definido en backend/Dockerfile (liveness en :8081)
+    stop_grace_period: 30s           # > timeout-per-shutdown-phase (20 s)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
 
   frontend:
+    <<: *app-hardening
+    image: ${IMAGE_REGISTRY:-local}/parking-frontend:${IMAGE_TAG:-dev}
     build:
       context: ./frontend
+    environment:
+      BACKEND_URL: http://backend:8080
     ports:
       - "${FRONTEND_PORT:-4200}:8080"
+    tmpfs:
+      - /tmp:mode=1777               # pid y temporales de nginx
+      - /etc/nginx/conf.d:mode=1777  # destino de la plantilla procesada por envsubst (UID 101)
+    networks:
+      - edge
+    # Arranque ordenado: `docker compose up -d` termina cuando el backend ya está sano,
+    # así el smoke test inmediato no recibe 502.
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 6
+    # Health check: definido en frontend/Dockerfile (/healthz)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  # --- Opcional: métricas y alertas (docker compose --profile observability up -d) ---
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+    ports:
+      - "127.0.0.1:9090:9090"        # solo accesible desde la propia máquina
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
-volumes:
-  parking_postgres_data:
+networks:
+  edge: {}                           # frontend <-> backend (y Prometheus)
+  data:
+    internal: true                   # backend <-> PostgreSQL, sin salida a internet
 
+volumes:
+  pgdata:

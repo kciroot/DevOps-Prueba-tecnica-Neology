@@ -1,6 +1,13 @@
+# Configuración base. Todo lo que cambia por ambiente se inyecta con variables de entorno.
+# Perfil por defecto: H2 en memoria (desarrollo local sin Docker).
+# Perfil "postgres": el que usan Docker Compose y AWS (ver application-postgres.yml).
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  # Respeta X-Forwarded-For/Proto enviados por nginx o el ALB
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
 
 spring:
   application:
@@ -10,6 +17,12 @@ spring:
     username: ${DB_USERNAME:sa}
     password: ${DB_PASSWORD:}
     driver-class-name: org.h2.Driver
+    hikari:
+      pool-name: parking-pool
+      # Conexiones por instancia. Total en PostgreSQL = instancias x DB_POOL_SIZE
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      # Falla rápido (5 s) en lugar de encolar peticiones 30 s si el pool está agotado
+      connection-timeout: 5000
   h2:
     console:
       enabled: true
@@ -17,32 +30,61 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
+      # RIESGO CONOCIDO: sin migraciones versionadas (Flyway). Ver docs/SECURITY.md
       ddl-auto: update
     properties:
       hibernate:
-        format_sql: true
         jdbc:
           time_zone: UTC
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+# --- Operación: Actuator en un puerto separado que NUNCA se publica a internet ---
 management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+      # Muestra qué componente falla (db, diskSpace...) sin exponer detalles sensibles
+      show-components: always
       show-details: never
+      group:
+        # readiness incluye la base de datos: si PostgreSQL cae, la instancia deja de recibir tráfico
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # Histograma para calcular latencia p95/p99 en Prometheus
+      percentiles-histogram:
+        http.server.requests: true
+  info:
+    env:
+      enabled: true
 
 info:
   app:
     name: Parking API
-    version: 1.0.0
+    version: ${APP_VERSION:1.0.0}
+
+logging:
+  level:
+    mx.neology.parking: ${LOG_LEVEL:INFO}
+  # Logs JSON (formato ECS) se activan en contenedor con LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs
+  structured:
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${APP_VERSION:1.0.0}
+        environment: ${APP_ENV:local}
 
 app:
   cors:
     allowed-origins: ${FRONTEND_URL:http://localhost:4200}
-

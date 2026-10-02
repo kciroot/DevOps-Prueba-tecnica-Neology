@@ -1,0 +1,65 @@
+# Excepciones de Trivy. Cada entrada tiene justificación y fecha de caducidad (exp:):
+# al vencer, el pipeline vuelve a fallar y obliga a revisar.
+#
+# ---------------------------------------------------------------------------
+# Angular 18.2.13 (aplicación base). Angular 18 ya no tiene soporte: ninguno de estos CVE
+# tiene parche en la línea 18.x; todos se corrigen migrando a Angular 20.3.27 o posterior.
+# Migrar de versión mayor es un cambio de la aplicación (fuera del alcance DevOps); queda
+# registrado en docs/SECURITY.md. Exposición real revisada el 29-sep-2026 sobre el código:
+#   - La app es una SPA sin SSR ni hidratación: no usa HttpTransferCache ni provideClientHydration.
+#   - No usa i18n ($localize / atributos i18n) ni traducciones externas.
+#   - No usa innerHTML ni bypassSecurityTrust*; las plantillas se compilan AOT desde el repo.
+#   - Las pipes date/currency usan formatos fijos en el código, no datos del usuario.
+#   - Todas las peticiones HTTP son relativas (/neo/...), sin URLs de terceros.
+# Responsable: Ricardo Palacios · revisar antes de 2026-12-31
+# ---------------------------------------------------------------------------
+
+# XSRF token leak con URLs protocol-relative: la app solo llama rutas relativas /neo/...
+CVE-2025-66035 exp:2026-12-31
+# HttpTransferCache / hidratación (solo aplica con SSR): la app no usa SSR
+CVE-2026-50170 exp:2026-12-31
+CVE-2026-54266 exp:2026-12-31
+CVE-2026-54267 exp:2026-12-31
+CVE-2026-68945 exp:2026-12-31
+# DoS por digitsInfo / formato de fecha maliciosos: los formatos son constantes del código
+CVE-2026-50171 exp:2026-12-31
+CVE-2026-54268 exp:2026-12-31
+# XSS en el compilador de plantillas / SVG / MathML: plantillas propias compiladas AOT, sin innerHTML
+CVE-2025-66412 exp:2026-12-31
+CVE-2026-22610 exp:2026-12-31
+# XSS vía i18n o archivos de traducción: la app no usa i18n
+CVE-2026-27970 exp:2026-12-31
+CVE-2026-32635 exp:2026-12-31
+CVE-2026-69151 exp:2026-12-31
+# DoS en SSR por parámetros de matriz numéricos en la URL (agregado al DB de Trivy el 1-oct-2026): la app no usa SSR
+CVE-2026-101896 exp:2026-12-31
+
+# ---------------------------------------------------------------------------
+# Tomcat 10.1.55 (embebido en Spring Boot 3.5.16). El parche es 10.1.58, pero al
+# 1-oct-2026 no está publicado en Maven Central (el build falla al resolverlo).
+# Exposición revisada sobre el código: la app no usa autenticación ni restricciones
+# de seguridad de Tomcat (sin Spring Security, sin web.xml, sin realm, sin DIGEST ni
+# FORM). Caducidad corta a propósito: al vencer, el gate obliga a fijar
+# <tomcat.version>10.1.58</tomcat.version> en backend/pom.xml (o subir Spring Boot).
+# Responsable: Ricardo Palacios · revisar antes de 2026-10-31
+# ---------------------------------------------------------------------------
+
+# Bypass de security constraints: la app no declara security constraints en Tomcat
+CVE-2026-65182 exp:2026-10-31
+# Replay en el autenticador DIGEST: la app no usa autenticación DIGEST
+CVE-2026-65905 exp:2026-10-31
+# Bypass de autenticación FORM: la app no usa autenticación FORM
+CVE-2026-68525 exp:2026-10-31
+
+# ---------------------------------------------------------------------------
+# Jackson databind 2.21.6. El parche es 2.21.7, aún no publicado (2-oct-2026).
+# Exposición revisada sobre el código: ambos CVE requieren funciones que la app no usa
+# (sin @JsonTypeInfo / default typing, sin @JsonIdentityInfo, sin ObjectMapper propio;
+# los DTO son clases simples). Al vencer, fijar <jackson-bom.version>2.21.7</jackson-bom.version>.
+# Responsable: Ricardo Palacios · revisar antes de 2026-10-31
+# ---------------------------------------------------------------------------
+
+# Crecimiento sin límite del caché de type ids: solo con deserialización polimórfica
+CVE-2026-91776 exp:2026-10-31
+# Resolución cuadrática de forward references: solo con @JsonIdentityInfo
+CVE-2026-91777 exp:2026-10-31

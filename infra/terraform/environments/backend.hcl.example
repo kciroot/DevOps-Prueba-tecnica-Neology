@@ -1,0 +1,5 @@
+# Configuración del state remoto por ambiente (copiar a backend-<ambiente>.hcl, no se versiona).
+#   terraform init -backend-config=environments/backend-dev.hcl
+bucket = "mi-empresa-terraform-state"
+key    = "parking/dev/terraform.tfstate"
+region = "us-east-1"

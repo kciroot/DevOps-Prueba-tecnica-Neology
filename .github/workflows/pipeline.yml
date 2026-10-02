@@ -1,0 +1,349 @@
+# Pipeline único, con etapas visibles en la UI de GitHub:
+#
+#   CI ─┬─ backend   (tests + build)       ─┐
+#       ├─ frontend  (npm ci + build)       ├─> Build ──────────────> Release ──────> Deploy
+#       └─ terraform (fmt/validate/test)    │   imágenes + Trivy     GHCR (sin        AWS (solo si
+#   Security ─ Trivy (deps, secretos, IaC) ─┘   + E2E Compose        reconstruir)     DEPLOY_ENABLED)
+#                                                                   solo main/tag v*
+#
+# Cualquier job que falle detiene todo lo que depende de él: nada se publica ni despliega
+# sin pasar los quality gates, y lo que se publica es exactamente lo que se probó.
+name: pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]   # las ramas de trabajo se validan en su Pull Request (evita ejecuciones duplicadas)
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+# Mínimo privilegio: solo lectura por defecto; cada job pide lo que necesita
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TRIVY_VERSION: v0.74.0
+  TERRAFORM_VERSION: 1.16.4
+
+jobs:
+  # ===========================================================================
+  # CI
+  # ===========================================================================
+  backend:
+    name: "CI · backend"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven            # caché de ~/.m2 por hash de pom.xml
+
+      - name: Tests y empaquetado (mvn verify)
+        working-directory: backend
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Publicar reportes de tests
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-test-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  frontend:
+    name: "CI · frontend"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm              # caché del directorio de npm, no de node_modules
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalación reproducible (npm ci)
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Build de producción (con budgets de tamaño)
+        working-directory: frontend
+        run: npm run build
+
+  terraform:
+    name: "CI · terraform"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Formato
+        run: terraform fmt -check -recursive
+
+      - name: Init sin backend remoto (no requiere credenciales)
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Pruebas del plan con provider simulado (sin credenciales ni costo)
+        run: terraform test
+
+  # ===========================================================================
+  # SECURITY
+  # ===========================================================================
+  security:
+    name: "Security · Trivy (deps, secretos, IaC)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # Sin consultas a Maven Central: resolver los BOM del pom.xml desde el runner provocó
+      # 429 Too Many Requests. Las dependencias Java se escanean con versiones exactas en el
+      # job build (Trivy sobre la imagen, que contiene los JAR reales).
+      TRIVY_OFFLINE_SCAN: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Quality gate: falla con vulnerabilidades HIGH/CRITICAL que tienen parche,
+      # secretos filtrados o misconfiguración grave (Dockerfile, Terraform). Ver trivy.yaml
+      - name: Trivy fs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          trivy-config: trivy.yaml
+          version: ${{ env.TRIVY_VERSION }}
+
+  # ===========================================================================
+  # BUILD: imágenes, escaneo de imágenes y prueba E2E del stack
+  # ===========================================================================
+  build:
+    name: "Build · imágenes + escaneo + E2E"
+    needs: [backend, frontend, terraform, security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Solo main y tags de versión generan una release
+      RELEASE: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build backend
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          load: true
+          tags: local/parking-backend:ci
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build frontend
+        id: build-frontend
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: frontend
+          load: true
+          tags: local/parking-frontend:ci
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Trivy — imagen backend
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: local/parking-backend:ci
+          trivy-config: trivy.yaml
+          version: ${{ env.TRIVY_VERSION }}
+
+      # Corre aunque falle el escaneo del backend: un solo run reporta ambas
+      # imágenes. El job sigue fallando y los pasos siguientes no corren.
+      - name: Trivy — imagen frontend
+        if: ${{ !cancelled() && steps.build-frontend.outcome == 'success' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: local/parking-frontend:ci
+          trivy-config: trivy.yaml
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Tamaño de imágenes
+        run: docker image ls --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}' | grep parking
+
+      - name: E2E con Docker Compose (health, seguridad, smoke test, correlación)
+        env:
+          IMAGE_REGISTRY: local
+          IMAGE_TAG: ci
+        run: |
+          # Password efímero, generado en el runner y nunca impreso
+          sed "s|CAMBIAR_POR_UN_PASSWORD_ALEATORIO|$(openssl rand -hex 24)|" .env.example > .env
+          ./scripts/validate-stack.sh --no-build
+
+      - name: Pruebas de reglas de alerta (promtool)
+        run: >-
+          docker run --rm -v "$PWD/observability/prometheus:/rules:ro" -w /rules
+          --entrypoint promtool prom/prometheus:v3.15.0 test rules alerts.test.yml
+
+      # Se guardan EXACTAMENTE las imágenes que pasaron Trivy y el E2E; release no reconstruye
+      - name: Guardar imágenes probadas
+        if: env.RELEASE == 'true'
+        run: docker save local/parking-backend:ci local/parking-frontend:ci | gzip -1 > images.tar.gz
+
+      - name: Subir imágenes como artefacto
+        if: env.RELEASE == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: images
+          path: images.tar.gz
+          compression-level: 0
+          retention-days: 1
+
+  # ===========================================================================
+  # RELEASE: publica en GHCR las mismas imágenes probadas (sin reconstruir)
+  # ===========================================================================
+  release:
+    name: "Release · GHCR"
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write           # solo este job puede publicar imágenes
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images
+
+      - name: Cargar imágenes probadas
+        run: docker load --input images.tar.gz
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Versionado:
+      #   sha-<commit>  siempre; inmutable; es el que se despliega y el que se usa para rollback
+      #   X.Y.Z         cuando se publica un tag vX.Y.Z
+      #   main          apunta al último build de main (solo referencia, nunca se despliega)
+      - name: Etiquetar y publicar
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"   # GHCR exige minúsculas
+          tags=("sha-${GITHUB_SHA::7}")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tags+=("${GITHUB_REF_NAME#v}")
+          else
+            tags+=("main")
+          fi
+          for service in backend frontend; do
+            for tag in "${tags[@]}"; do
+              docker tag "local/parking-${service}:ci" "${repo}/parking-${service}:${tag}"
+              docker push "${repo}/parking-${service}:${tag}"
+            done
+          done
+          {
+            echo "### Imágenes publicadas"
+            for service in backend frontend; do
+              echo "- \`${repo}/parking-${service}\`: ${tags[*]}"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # DEPLOY: Terraform aplica la nueva versión en AWS
+  #   main    -> ambiente "dev"         (automático)
+  #   tag v*  -> ambiente "production"  (requiere aprobación en el Environment)
+  # Se activa solo si la variable de repositorio DEPLOY_ENABLED = 'true'.
+  # ===========================================================================
+  deploy:
+    name: "Deploy · ${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'dev' }}"
+    needs: release
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'dev' }}
+      url: ${{ steps.apply.outputs.app_url }}
+    concurrency:
+      group: deploy-${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'dev' }}
+      cancel-in-progress: false   # nunca interrumpir un despliegue a medias
+    permissions:
+      contents: read
+      id-token: write           # OIDC: credenciales AWS temporales, sin llaves guardadas
+    env:
+      TF_ENV: ${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'dev' }}
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Init (state remoto en S3, uno por ambiente)
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="key=parking/${TF_ENV}/terraform.tfstate"
+          -backend-config="region=${{ vars.AWS_REGION }}"
+
+      - name: Plan (despliega exactamente la imagen sha-<commit> que pasó los quality gates)
+        run: >-
+          terraform plan -input=false -out=tfplan
+          -var-file="environments/${TF_ENV}.tfvars"
+          -var="image_tag=sha-${GITHUB_SHA::7}"
+          -var="image_repository=ghcr.io/${GITHUB_REPOSITORY,,}"
+
+      - name: Apply (espera a que ECS quede estable; rollback automático si falla)
+        id: apply
+        run: |
+          terraform apply -input=false tfplan
+          echo "app_url=$(terraform output -raw app_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test contra el ambiente desplegado
+        working-directory: .
+        env:
+          BASE_URL: ${{ steps.apply.outputs.app_url }}
+        run: ./scripts/smoke-test.sh
