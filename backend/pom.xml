@@ -25,8 +25,8 @@
           misma línea menor. Quitar cuando el parent de Spring Boot los incluya.
           - Jackson 2.21.4 -> 2.21.6: CVE-2026-68497 (HIGH, DoS con números sin límite)
           - pgjdbc 42.7.11 -> 42.7.12: CVE-2026-54291 (HIGH, downgrade de SCRAM)
-          Tomcat 10.1.58 (parche de 3 CVE) aún no está publicado en Maven Central:
-          excepción temporal en .trivyignore; fijar tomcat.version aquí cuando salga.
+          Pendientes (parche aún no publicado en Maven Central; excepción temporal
+          en .trivyignore): Tomcat 10.1.58 y Jackson 2.21.7. Fijarlos aquí cuando salgan.
         -->
         <jackson-bom.version>2.21.6</jackson-bom.version>
         <postgresql.version>42.7.12</postgresql.version>

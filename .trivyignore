@@ -50,3 +50,16 @@ CVE-2026-65182 exp:2026-10-31
 CVE-2026-65905 exp:2026-10-31
 # Bypass de autenticación FORM: la app no usa autenticación FORM
 CVE-2026-68525 exp:2026-10-31
+
+# ---------------------------------------------------------------------------
+# Jackson databind 2.21.6. El parche es 2.21.7, aún no publicado (2-oct-2026).
+# Exposición revisada sobre el código: ambos CVE requieren funciones que la app no usa
+# (sin @JsonTypeInfo / default typing, sin @JsonIdentityInfo, sin ObjectMapper propio;
+# los DTO son clases simples). Al vencer, fijar <jackson-bom.version>2.21.7</jackson-bom.version>.
+# Responsable: Ricardo Palacios · revisar antes de 2026-10-31
+# ---------------------------------------------------------------------------
+
+# Crecimiento sin límite del caché de type ids: solo con deserialización polimórfica
+CVE-2026-91776 exp:2026-10-31
+# Resolución cuadrática de forward references: solo con @JsonIdentityInfo
+CVE-2026-91777 exp:2026-10-31

@@ -26,8 +26,13 @@ LABEL org.opencontainers.image.title="parking-api" \
       org.opencontainers.image.description="API Spring Boot del estacionamiento" \
       org.opencontainers.image.source="https://github.com/vmirandaNeo/DevOps-Prueba-tecnica-Neology"
 
+# Parches de seguridad del SO publicados después de la imagen base (p. ej. OpenSSL),
+# sin esperar a que se reconstruya el tag de Temurin. Solo actualiza lo ya instalado.
 # Usuario sin privilegios con UID/GID fijos (predecible para volúmenes, ECS y Kubernetes)
-RUN groupadd --system --gid 10001 app \
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 WORKDIR /app
