@@ -3,7 +3,7 @@
 #
 # ---------------------------------------------------------------------------
 # Angular 18.2.13 (aplicación base). Angular 18 ya no tiene soporte: ninguno de estos CVE
-# tiene parche en la línea 18.x; todos se corrigen migrando a Angular 20.3.27 o posterior.
+# tiene parche en la línea 18.x; todos se corrigen migrando a Angular 20.3.32 o posterior.
 # Migrar de versión mayor es un cambio de la aplicación (fuera del alcance DevOps); queda
 # registrado en docs/SECURITY.md. Exposición real revisada el 29-sep-2026 sobre el código:
 #   - La app es una SPA sin SSR ni hidratación: no usa HttpTransferCache ni provideClientHydration.
