@@ -1,6 +1,6 @@
 # Reglas de alerta mínimas. Cada una responde a una pregunta operativa concreta.
 # SLO de referencia: 99.5 % de peticiones /neo/** sin error 5xx en 30 días
-# (presupuesto de error = 0.5 %). Ver docs/OBSERVABILITY.md
+# (presupuesto de error = 0.5 %). Ver docs/OPERATIONS.md
 groups:
   - name: parking-slo
     rules:

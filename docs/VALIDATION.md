@@ -82,7 +82,7 @@ Con el commit `8db345a` (2-oct-2026), el pipeline del [Pull Request #2](https://
 | `docker compose config` / sin `POSTGRES_PASSWORD` | OK / falla con mensaje claro |
 | `shellcheck -S style scripts/*.sh` | Sin hallazgos |
 | `actionlint` sobre `pipeline.yml` | Sin hallazgos |
-| `promtool check rules` y `promtool test rules alerts.test.yml` | 6 reglas / SUCCESS |
+| `promtool check rules` y `promtool test rules alerts.test.yml` | 6 reglas (5 alertas + 1 de grabación del SLI) / SUCCESS |
 | `trivy fs --scanners secret,misconfig` | 0 secretos; 0 misconfiguraciones HIGH/CRITICAL |
 
 ## 4. Pendiente
