@@ -28,7 +28,7 @@
           Pendientes (parche aún no publicado en Maven Central; excepción temporal
           en .trivyignore): Tomcat 10.1.58 y Jackson 2.21.7. Fijarlos aquí cuando salgan.
         -->
-        <jackson-bom.version>2.21.6</jackson-bom.version>
+        <jackson-bom.version>2.21.7</jackson-bom.version>
         <postgresql.version>42.7.12</postgresql.version>
     </properties>
 
