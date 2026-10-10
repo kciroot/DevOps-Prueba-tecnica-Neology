@@ -1,43 +1,51 @@
 #!/usr/bin/env bash
+# Prueba funcional de punta a punta, igual que un usuario: todo pasa por el frontend (nginx).
+#
+#   BASE_URL    URL pública del stack           (por defecto http://localhost:4200)
+#               FRONTEND_URL se acepta como alias (nombre usado por la versión original del script)
+#   HEALTH_URL  opcional: URL de Actuator health (p. ej. http://localhost:8081/actuator/health)
 set -euo pipefail
 
-api_url="${API_URL:-http://localhost:8080}"
-frontend_url="${FRONTEND_URL:-http://localhost:4200}"
-unique_suffix="$(date +%H%M%S)"
-plate="DEV-${unique_suffix}"
+base_url="${BASE_URL:-${FRONTEND_URL:-http://localhost:4200}}"
+health_url="${HEALTH_URL:-}"
+plate="SMK-$(date +%H%M%S)"
+
+fail() { echo "ERROR: $*" >&2; exit 1; }
 
 post_json() {
-  local path="$1"
-  local body="$2"
-  curl --fail --silent --show-error \
-    -X POST "$api_url$path" \
-    -H 'Content-Type: application/json' \
-    --data "$body"
+  curl --fail --silent --show-error --max-time 10 \
+    -X POST "$base_url$1" -H 'Content-Type: application/json' --data "$2"
 }
 
-echo "[1/6] Verificando salud del backend..."
-health_response="$(curl --fail --silent --show-error "$api_url/actuator/health")"
-echo "$health_response" | grep -q '"status":"UP"'
+echo "[1/7] Frontend sirve la SPA..."
+index_html="$(curl --fail --silent --show-error --max-time 10 "$base_url/")"
+grep -q '<app-root' <<<"$index_html" || fail "el frontend no devolvió index.html"
 
-echo "[2/6] Registrando residente $plate..."
-post_json "/neo/vehiculos/residentes" "{\"placa\":\"$plate\"}" >/dev/null
-
-echo "[3/6] Registrando entrada..."
-post_json "/neo/estancias/entrada" "{\"placa\":\"$plate\"}" >/dev/null
-
-echo "[4/6] Registrando salida..."
-post_json "/neo/estancias/salida" "{\"placa\":\"$plate\"}" >/dev/null
-
-echo "[5/6] Verificando reporte de residentes..."
-report_response="$(curl --fail --silent --show-error "$api_url/neo/residentes/pagos")"
-echo "$report_response" | grep -q "\"placa\":\"$plate\""
-
-echo "[6/6] Verificando frontend cuando está disponible..."
-if curl --fail --silent --show-error "$frontend_url" | grep -q '<app-root'; then
-  echo "Frontend disponible."
+if [[ -n "$health_url" ]]; then
+  echo "[2/7] Health del backend ($health_url)..."
+  health="$(curl --fail --silent --show-error --max-time 5 "$health_url")"
+  grep -q '"status":"UP"' <<<"$health" || fail "el backend no reporta UP: $health"
 else
-  echo "AVISO: el frontend no respondió; la validación de API sí fue correcta." >&2
+  echo "[2/7] Health del backend: omitido (Actuator no se expone públicamente)"
 fi
 
-echo "SMOKE TEST CORRECTO para la placa $plate."
+echo "[3/7] API accesible vía proxy y con X-Request-ID..."
+headers="$(curl --fail --silent --show-error --max-time 10 -D - -o /dev/null "$base_url/neo/vehiculos")"
+request_id="$(printf '%s' "$headers" | tr -d '\r' | awk -F': ' '!found && tolower($1)=="x-request-id"{print $2; found=1}')"
+[[ -n "$request_id" ]] || fail "la respuesta no incluye X-Request-ID"
+echo "      X-Request-ID=$request_id"
 
+echo "[4/7] Alta de residente $plate..."
+post_json "/neo/vehiculos/residentes" "{\"placa\":\"$plate\"}" >/dev/null
+
+echo "[5/7] Registro de entrada..."
+post_json "/neo/estancias/entrada" "{\"placa\":\"$plate\"}" >/dev/null
+
+echo "[6/7] Registro de salida..."
+post_json "/neo/estancias/salida" "{\"placa\":\"$plate\"}" >/dev/null
+
+echo "[7/7] La placa aparece en el reporte de residentes..."
+report="$(curl --fail --silent --show-error --max-time 10 "$base_url/neo/residentes/pagos")"
+grep -q "\"placa\":\"$plate\"" <<<"$report" || fail "la placa no aparece en el reporte"
+
+echo "SMOKE TEST CORRECTO para la placa $plate."

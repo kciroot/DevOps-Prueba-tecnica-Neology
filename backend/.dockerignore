@@ -1,0 +1,4 @@
+# Solo pom.xml y src/ entran al build context del backend.
+*
+!pom.xml
+!src/

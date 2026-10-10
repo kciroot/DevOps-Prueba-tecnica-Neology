@@ -1,0 +1,17 @@
+# Configuración compartida de Trivy (local y CI) — una sola herramienta para:
+#   vuln      dependencias (pom.xml, package-lock.json) y paquetes del SO en imágenes
+#   secret    credenciales filtradas en el código
+#   misconfig Dockerfile, docker-compose, Terraform y GitHub Actions
+# Quality gate: falla solo con HIGH/CRITICAL que ya tienen parche disponible.
+severity:
+  - HIGH
+  - CRITICAL
+exit-code: 1
+scan:
+  skip-dirs:
+    - "**/node_modules"
+    - "**/target"
+    - "**/.terraform"
+vulnerability:
+  ignore-unfixed: true
+ignorefile: .trivyignore

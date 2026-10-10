@@ -1,0 +1,53 @@
+# Pruebas unitarias de las alertas:  promtool test rules alerts.test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # El backend deja de responder -> BackendDown tras 1 minuto
+  - interval: 1m
+    input_series:
+      - series: 'up{job="parking-backend", instance="backend:8081"}'
+        values: "1 1 0 0 0"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BackendDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: BackendDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: parking-backend
+              instance: backend:8081
+            exp_annotations:
+              summary: "Backend sin respuesta en backend:8081"
+              runbook: "docs/OPERATIONS.md#3-alertas"
+
+  # 10 % de respuestas 5xx sostenidas -> HighErrorRate
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{uri="/neo/vehiculos", status="200"}'
+        values: "0+90x20"
+      - series: 'http_server_requests_seconds_count{uri="/neo/vehiculos", status="500"}'
+        values: "0+10x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Más del 5 % de respuestas 5xx en /neo (SLO 99.5 %)"
+              runbook: "docs/OPERATIONS.md#5-runbook-del-incidente-simulado"
+
+  # Tráfico sano -> sin alerta de errores
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{uri="/neo/vehiculos", status="200"}'
+        values: "0+100x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: HighErrorRate
+        exp_alerts: []
